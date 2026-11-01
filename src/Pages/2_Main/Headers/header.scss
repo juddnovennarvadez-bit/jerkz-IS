@@ -1,0 +1,147 @@
+.page-header-section {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+
+  .page-title {
+    min-width: 0;
+    color: #011936;
+    font-size: 24px;
+    font-weight: 600;
+
+    h2 {
+      margin: 0;
+      color: #011936;
+      font-size: 24px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    p {
+      margin: 0;
+      color: #011936;
+      font-size: 14px;
+      font-weight: 400;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .calendar-area {
+    display: flex;
+    min-width: 0;
+    flex: 0 1 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: #011936;
+    font-size: 16px;
+    font-weight: 500;
+
+    .icon {
+      display: flex;
+      flex: 0 0 24px;
+      align-items: center;
+      justify-content: center;
+
+      svg {
+        width: 20px;
+        height: 24px;
+      }
+    }
+
+    .calendar {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      line-height: 1.4;
+
+      .date,
+      .time {
+        max-width: 100%;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .date {
+        font-size: 14px;
+      }
+
+      .time {
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+    }
+  }
+}
+
+@media (max-width: 1200px) {
+  .page-header-section .calendar-area {
+    position: fixed;
+    z-index: 39;
+    inset: 0 0 auto;
+    box-sizing: border-box;
+    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    justify-content: flex-end;
+    padding: env(safe-area-inset-top, 0px) 16px 0 68px;
+    background: #011936;
+    color: #fff;
+
+    .calendar {
+      align-items: flex-end;
+    }
+
+    .calendar .date,
+    .calendar .time {
+      color: #fff;
+    }
+
+    .icon {
+      color: #fff;
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  .page-header-section {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+
+    .page-title {
+      font-size: 21px;
+
+      h2 {
+        font-size: 21px;
+        line-height: 1.25;
+      }
+
+      p {
+        margin-top: 4px;
+        font-size: 13px;
+      }
+    }
+
+    .calendar-area {
+      gap: 8px;
+      font-size: 14px;
+      flex-direction: row;
+
+      .calendar {
+        flex-direction: row;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 2px 8px;
+
+        .date,
+        .time {
+          font-size: 13px;
+        }
+      }
+    }
+  }
+}

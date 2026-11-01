@@ -1,0 +1,63 @@
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: JerksAppStoreConnect
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.jerks.inventory
+      groups:
+        - ios_credentials
+      vars:
+        XCODE_PROJECT: ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+      node: 22
+      xcode: latest
+    scripts:
+      - name: Install JavaScript dependencies
+        script: npm ci
+      - name: Build web assets and sync Capacitor iOS plugins
+        script: |
+          npm run build
+          npx cap sync ios
+      - name: Add Firebase configuration and Google URL scheme
+        script: |
+          set -eu
+          if [ -z "${GOOGLE_SERVICE_INFO_PLIST:-}" ] || [ ! -f "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            echo "Add GOOGLE_SERVICE_INFO_PLIST as a secure file variable in the ios_credentials group."
+            exit 1
+          fi
+
+          cp "$GOOGLE_SERVICE_INFO_PLIST" ios/App/App/GoogleService-Info.plist
+          reversed_client_id=$(/usr/libexec/PlistBuddy -c 'Print :REVERSED_CLIENT_ID' ios/App/App/GoogleService-Info.plist)
+          if [ -z "$reversed_client_id" ]; then
+            echo "GoogleService-Info.plist does not contain REVERSED_CLIENT_ID."
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleURLTypes array' ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleURLTypes:0 dict' ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleURLTypes:0:CFBundleURLSchemes array' ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $reversed_client_id" ios/App/App/Info.plist
+      - name: Configure iOS code signing
+        script: xcode-project use-profiles
+      - name: Set unique App Store build number
+        script: |
+          cd "$CM_BUILD_DIR/ios/App"
+          agvtool new-version -all "$BUILD_NUMBER"
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

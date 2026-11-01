@@ -1,0 +1,125 @@
+@use "../../../App.scss" as *;
+
+.sidebar {
+  display: flex;
+  width: calc(100% - 30px);
+  height: calc(100vh - 30px);
+  height: calc(100dvh - 30px);
+  flex-direction: column;
+  gap: 20px;
+  margin: 15px;
+
+  > img {
+    display: block;
+    width: 100%;
+    max-width: 220px;
+    height: auto;
+    align-self: center;
+  }
+
+  .sidebar-bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: auto;
+  }
+
+  .mobile-account-controls {
+    display: none;
+  }
+
+  .sidebar-account {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 10px 15px;
+    color: $background-color-white;
+
+    strong {
+      overflow: hidden;
+      font-size: 15px;
+      text-overflow: ellipsis;
+    }
+
+    span {
+      margin-top: 3px;
+      color: rgba(250, 252, 254, 0.7);
+      font-size: 12px;
+    }
+  }
+
+  .sidebar-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    button {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 7px;
+      background: $background-color-blue;
+      color: $background-color-white;
+      cursor: pointer;
+      text-align: left;
+
+      span {
+        overflow: hidden;
+        padding: 4px 2px;
+        font-size: 16px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      svg {
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+      }
+
+      &:hover {
+        background: $background-color-white;
+        color: $background-color-blue;
+        transition: all 0.2s ease-in-out;
+      }
+
+      &:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: 2px;
+      }
+    }
+
+    .active {
+      background: $background-color-white;
+      color: $background-color-blue;
+    }
+  }
+
+  .sidebar-logout {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: $background-color-white;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+
+    &:hover {
+      background: $background-color-white;
+      color: $background-color-blue;
+    }
+
+    svg {
+      width: 24px;
+    }
+  }
+}

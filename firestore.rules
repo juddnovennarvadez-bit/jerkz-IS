@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isInitialAdmin() {
+      return signedIn()
+        && request.auth.token.email == 'autot4223@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function staffPath(userId) {
+      return /databases/$(database)/documents/staff/$(userId);
+    }
+
+    function isApprovedStaff() {
+      return isInitialAdmin()
+        || (signedIn()
+          && exists(staffPath(request.auth.uid))
+          && get(staffPath(request.auth.uid)).data.approved == true);
+    }
+
+    function isAdmin() {
+      return isInitialAdmin()
+        || (isApprovedStaff()
+          && get(staffPath(request.auth.uid)).data.role == 'Admin');
+    }
+
+    function invitePath(email) {
+      return /databases/$(database)/documents/staffInvites/$(email);
+    }
+
+    match /inventory/shared {
+      allow read, write: if isApprovedStaff();
+    }
+
+    match /staff/{userId} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        || (signedIn()
+          && request.auth.uid == userId
+          && request.auth.token.email_verified == true
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.approved == true
+          && existsAfter(invitePath(request.auth.token.email))
+          && getAfter(invitePath(request.auth.token.email)).data.approved == true
+          && getAfter(invitePath(request.auth.token.email)).data.claimedUid == userId
+          && request.resource.data.role == getAfter(invitePath(request.auth.token.email)).data.role);
+      allow update, delete: if isAdmin();
+    }
+
+    match /staffInvites/{email} {
+      allow get: if isAdmin()
+        || (signedIn()
+          && request.auth.token.email_verified == true
+          && request.auth.token.email == email);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn()
+          && request.auth.token.email_verified == true
+          && request.auth.token.email == email
+          && resource.data.approved == true
+          && (!('claimedUid' in resource.data)
+            || resource.data.claimedUid == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimedUid'])
+          && request.resource.data.claimedUid == request.auth.uid);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

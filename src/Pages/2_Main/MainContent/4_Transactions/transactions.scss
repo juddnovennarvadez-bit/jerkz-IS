@@ -1,0 +1,381 @@
+.transactions-page {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: calc(100vh - 20px);
+  margin-top: 10px;
+  padding: 20px 20px 0 20px;
+  border-radius: 15px 0 0;
+  background-color: #edf7fe;
+}
+
+.transactions-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.transaction-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+}
+
+.transaction-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e1ebf2;
+  border-radius: 12px;
+  background: #fff;
+  color: #64778a;
+  font-size: 13px;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  strong {
+    color: #011936;
+    font-size: 24px;
+    line-height: 1.2;
+  }
+}
+
+.transaction-summary-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 10px;
+  background: #edf7fe;
+  color: #0076e8;
+  font-size: 18px;
+
+  &.stock-in {
+    background: #e8f7ef;
+    color: #20834b;
+  }
+
+  &.stock-out {
+    background: #fff3e0;
+    color: #a45b00;
+  }
+}
+
+.transaction-table-panel {
+  overflow: hidden;
+  border: 1px solid #e1ebf2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.transaction-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid #e8eef3;
+
+  h3 {
+    margin: 0;
+    color: #011936;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 5px 0 0;
+    color: #718397;
+    font-size: 12px;
+  }
+}
+
+.transaction-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.transaction-type-filter select,
+.transaction-search {
+  box-sizing: border-box;
+  height: 40px;
+  border: 1px solid #d6e2eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #31485f;
+  font: inherit;
+  font-size: 13px;
+
+  &:focus-within,
+  &:focus {
+    border-color: #0076e8;
+    outline: 2px solid rgb(0 118 232 / 12%);
+  }
+}
+
+.transaction-type-filter select {
+  padding: 0 30px 0 12px;
+}
+
+.transaction-search {
+  display: flex;
+  width: min(32vw, 300px);
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  color: #718397;
+
+  input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #011936;
+    font: inherit;
+  }
+}
+
+.transaction-table-wrapper {
+  overflow: auto;
+  max-height: calc(100vh - 360px);
+}
+
+.transaction-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #31485f;
+  font-size: 13px;
+  text-align: left;
+
+  th,
+  td {
+    padding: 13px 16px;
+    border-bottom: 1px solid #e8eef3;
+    vertical-align: middle;
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f7fafc;
+    color: #64778a;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  tbody tr:hover {
+    background: #f8fbfd;
+  }
+}
+
+.transaction-type {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #edf2f7;
+  color: #536579;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &.stock-in {
+    background: #e8f7ef;
+    color: #20834b;
+  }
+
+  &.stock-out {
+    background: #fff3e0;
+    color: #a45b00;
+  }
+}
+
+.transaction-item-name,
+.transaction-item-code {
+  display: block;
+}
+
+.transaction-item-name {
+  color: #011936;
+  font-weight: 500;
+}
+
+.transaction-item-code {
+  margin-top: 3px;
+  color: #8493a3;
+  font-size: 11px;
+}
+
+.transaction-quantity {
+  width: 72px;
+  text-align: right;
+  font-weight: 600;
+}
+
+.transaction-empty {
+  height: 150px;
+  color: #718397;
+  text-align: center;
+}
+
+.transaction-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid #e8eef3;
+
+  p {
+    margin: 0;
+    color: #718397;
+    font-size: 12px;
+  }
+}
+
+.transaction-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  button {
+    display: grid;
+    min-width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid #d6e2eb;
+    border-radius: 7px;
+    background: #fff;
+    color: #31485f;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+
+    &:hover:not(:disabled):not(.active) {
+      border-color: #0076e8;
+      color: #0076e8;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    &.active {
+      border-color: #0076e8;
+      background: #0076e8;
+      color: #fff;
+    }
+  }
+
+  > span {
+    padding: 0 2px;
+    color: #718397;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@media (max-width: 800px) {
+  .transaction-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transaction-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transaction-search {
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .transaction-table {
+    min-width: 850px;
+  }
+}
+
+@media (max-width: 600px) {
+  .transactions-page {
+    padding: 16px;
+  }
+
+  .transaction-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 900px) {
+  .transactions-page {
+    min-height: auto;
+    margin-top: 0;
+    padding-bottom: 16px;
+    border-radius: 10px 10px 0 0;
+  }
+
+  .transaction-table-wrapper {
+    max-height: max(240px, calc(100dvh - 350px));
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .transaction-table {
+    min-width: 850px;
+  }
+}
+
+@media (max-width: 520px) {
+  .transactions-page {
+    padding: 14px;
+  }
+
+  .transaction-toolbar {
+    padding: 16px;
+  }
+
+  .transaction-filters {
+    width: 100%;
+  }
+
+  .transaction-type-filter,
+  .transaction-type-filter select,
+  .transaction-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .transaction-type-filter select,
+  .transaction-search input {
+    font-size: 16px;
+  }
+}
