@@ -43,6 +43,7 @@ function formatTransactionDate(timestamp) {
 export default function Dashboard({
   inventory = inventoryData,
   onViewTransactions,
+  onViewLowStockItem,
 }) {
   const inventoryItems = Array.isArray(inventory.items) ? inventory.items : [];
   const categories = Array.isArray(inventory.categories)
@@ -139,16 +140,24 @@ export default function Dashboard({
               <ul className="dashboard-item-list">
                 {lowStockItems.slice(0, 6).map((item) => (
                   <li key={item.itemNo}>
-                    <div className="dashboard-list-item">
-                      <strong>{item.name}</strong>
-                      <span>
-                        {item.itemNo}
-                        {getLocation(item) ? ` · ${getLocation(item)}` : ""}
+                    <button
+                      type="button"
+                      className="dashboard-low-stock-item"
+                      onClick={() => onViewLowStockItem?.(item.itemNo)}
+                      aria-label={`View ${item.name}, ${getQuantity(item)} left`}
+                      disabled={!onViewLowStockItem}
+                    >
+                      <div className="dashboard-list-item">
+                        <strong>{item.name}</strong>
+                        <span>
+                          {item.itemNo}
+                          {getLocation(item) ? ` · ${getLocation(item)}` : ""}
+                        </span>
+                      </div>
+                      <span className="dashboard-stock-quantity">
+                        {getQuantity(item)} left
                       </span>
-                    </div>
-                    <span className="dashboard-stock-quantity">
-                      {getQuantity(item)} left
-                    </span>
+                    </button>
                   </li>
                 ))}
               </ul>

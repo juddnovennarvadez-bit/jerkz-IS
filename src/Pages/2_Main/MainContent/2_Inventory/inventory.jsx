@@ -7,6 +7,7 @@ import {
   CameraSource,
 } from "@capacitor/camera";
 import {
+  FaChevronDown,
   FaChevronLeft,
   FaChevronRight,
   FaCamera,
@@ -152,9 +153,34 @@ function formatDetailDate(value) {
   }).format(date);
 }
 
-function ItemDetailsModal({ item, onClose }) {
+function ItemDetailsModal({ item, transactions, onClose }) {
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   const stockEntries = Array.isArray(item.stock) ? item.stock : [];
   const machines = getItemMachines(item);
+  const itemHistory = transactions
+    .filter((transaction) => transaction.itemNo === item.itemNo)
+    .sort(
+      (first, second) =>
+        (Date.parse(second.timestamp) || 0) -
+        (Date.parse(first.timestamp) || 0),
+    );
+  if (
+    item.dateCreated &&
+    !itemHistory.some((entry) => entry.transactionType === "Item Added")
+  ) {
+    itemHistory.push({
+      transactionNo: `created-${item.itemNo}`,
+      transactionType: "Item Added",
+      timestamp: item.dateCreated,
+      quantity: 0,
+      reason: "Item added to inventory",
+    });
+    itemHistory.sort(
+      (first, second) =>
+        (Date.parse(second.timestamp) || 0) -
+        (Date.parse(first.timestamp) || 0),
+    );
+  }
   const details = [
     ["Item number", item.itemNo],
     ["Part number", item.code],
@@ -244,6 +270,53 @@ function ItemDetailsModal({ item, onClose }) {
             ) : (
               <p>No stock locations recorded.</p>
             )}
+          </section>
+          <section className="inventory-details-history">
+            <button
+              type="button"
+              className="inventory-history-toggle"
+              aria-expanded={isHistoryExpanded}
+              onClick={() => setIsHistoryExpanded((expanded) => !expanded)}
+            >
+              <span>
+                Item history <span>({itemHistory.length})</span>
+              </span>
+              <FaChevronDown
+                className={isHistoryExpanded ? "is-expanded" : ""}
+                aria-hidden="true"
+              />
+            </button>
+            {isHistoryExpanded &&
+              (itemHistory.length > 0 ? (
+                <ul>
+                  {itemHistory.map((entry, index) => (
+                    <li
+                      key={
+                        entry.transactionNo ||
+                        `${entry.transactionType}-${entry.timestamp}-${index}`
+                      }
+                    >
+                      <div>
+                        <strong>
+                          {entry.transactionType || "Inventory update"}
+                        </strong>
+                        <span>
+                          {formatDetailDate(entry.timestamp)}
+                          {entry.userName ? ` · ${entry.userName}` : ""}
+                        </span>
+                        {entry.reason && <span>{entry.reason}</span>}
+                      </div>
+                      <span className="inventory-history-quantity">
+                        {Number(entry.quantity) > 0
+                          ? `${entry.quantity} units`
+                          : "—"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No history recorded for this item yet.</p>
+              ))}
           </section>
           <div className="inventory-modal-actions">
             <button type="button" className="modal-submit" onClick={onClose}>
@@ -838,17 +911,30 @@ export default function Inventory({
   onChangeStock,
   onDeleteItem,
   onBulkAssignItems,
+  focusItemNo = "",
   actionsDisabled = false,
 }) {
+  const inventoryItems = Array.isArray(inventory?.items) ? inventory.items : [];
+  const focusedItemIndex = focusItemNo
+    ? inventoryItems.findIndex((item) => item.itemNo === focusItemNo)
+    : -1;
+  const transactions = Array.isArray(inventory?.transactions)
+    ? inventory.transactions
+    : [];
   const [search, setSearch] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(
+    focusedItemIndex >= 0
+      ? Math.floor(focusedItemIndex / itemsPerPage) + 1
+      : 1,
+  );
   const [modalAction, setModalAction] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
-  const [viewedItem, setViewedItem] = useState(null);
+  const [viewedItem, setViewedItem] = useState(
+    focusedItemIndex >= 0 ? inventoryItems[focusedItemIndex] : null,
+  );
   const [actionError, setActionError] = useState("");
   const [selectedItemNos, setSelectedItemNos] = useState([]);
   const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
-  const inventoryItems = Array.isArray(inventory?.items) ? inventory.items : [];
   const categories = [
     ...new Map(
       [
@@ -1216,6 +1302,7 @@ export default function Inventory({
       {viewedItem && (
         <ItemDetailsModal
           item={viewedItem}
+          transactions={transactions}
           onClose={() => setViewedItem(null)}
         />
       )}

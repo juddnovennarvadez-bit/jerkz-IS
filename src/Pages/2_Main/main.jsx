@@ -189,6 +189,7 @@ function machinesForItem(machines, machineNumbers) {
 
 export default function Main({ currentUser, onLogout }) {
   const [activePage, setActivePage] = useState("dashboard");
+  const [lowStockItemNo, setLowStockItemNo] = useState("");
   const [isTabletSidebarOpen, setIsTabletSidebarOpen] = useState(false);
   const [inventory, setInventory] = useState(() =>
     normalizeMachines(withoutLegacyUsers(inventorySeed)),
@@ -970,9 +971,15 @@ export default function Main({ currentUser, onLogout }) {
 
   function changePage(page) {
     if (page !== "users" || isAdmin) {
+      if (page !== "inventory") setLowStockItemNo("");
       setActivePage(page);
       setIsTabletSidebarOpen(false);
     }
+  }
+
+  function viewLowStockItem(itemNo) {
+    setLowStockItemNo(itemNo);
+    changePage("inventory");
   }
 
   return (
@@ -1032,6 +1039,7 @@ export default function Main({ currentUser, onLogout }) {
               onChangeStock={changeStock}
               onDeleteItem={deleteItem}
               onBulkAssignItems={bulkAssignItems}
+              focusItemNo={lowStockItemNo}
               actionsDisabled={isSaving || !hasCloudInventory}
             />
           ) : activePage === "category" ? (
@@ -1051,6 +1059,7 @@ export default function Main({ currentUser, onLogout }) {
               <Dashboard
                 inventory={inventory}
                 onViewTransactions={() => changePage("transactions")}
+                onViewLowStockItem={viewLowStockItem}
               />
             )
           ) : activePage === "machines" ? (
@@ -1065,6 +1074,7 @@ export default function Main({ currentUser, onLogout }) {
             <Dashboard
               inventory={inventory}
               onViewTransactions={() => changePage("transactions")}
+              onViewLowStockItem={viewLowStockItem}
             />
           )}
         </div>

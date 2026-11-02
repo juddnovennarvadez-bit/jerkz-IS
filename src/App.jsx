@@ -23,6 +23,7 @@ import {
 import {
   doc,
   getDoc,
+  onSnapshot,
   runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
@@ -35,6 +36,8 @@ const INITIAL_ADMIN_EMAIL = String(
 )
   .trim()
   .toLowerCase();
+const PENDING_ACCESS_MESSAGE =
+  "Your access request was sent to an Admin. This page will update automatically when approved.";
 
 function isVerifiedAccount(user) {
   return (
@@ -45,9 +48,13 @@ function isVerifiedAccount(user) {
 
 async function resolveAppUser(user) {
   const email = String(user.email || "").trim().toLowerCase();
-  if (!isVerifiedAccount(user) || !email) return null;
+  if (!email) return null;
 
-  if (INITIAL_ADMIN_EMAIL && email === INITIAL_ADMIN_EMAIL) {
+  if (
+    INITIAL_ADMIN_EMAIL &&
+    email === INITIAL_ADMIN_EMAIL &&
+    isVerifiedAccount(user)
+  ) {
     return {
       uid: user.uid,
       email,
@@ -58,43 +65,27 @@ async function resolveAppUser(user) {
 
   const staffRef = doc(db, "staff", user.uid);
   const staffSnapshot = await getDoc(staffRef);
-  let staff = null;
+  const staff = staffSnapshot.exists() ? staffSnapshot.data() : null;
 
-  if (staffSnapshot.exists()) {
-    staff = staffSnapshot.data();
-  } else {
-    const inviteRef = doc(db, "staffInvites", email);
-    const approvedStaff = await runTransaction(db, async (transaction) => {
-      const latestStaffSnapshot = await transaction.get(staffRef);
-      if (latestStaffSnapshot.exists()) return latestStaffSnapshot.data();
-
-      const inviteSnapshot = await transaction.get(inviteRef);
-      if (!inviteSnapshot.exists()) return null;
-
-      const invite = inviteSnapshot.data();
-      if (
-        invite.email !== email ||
-        invite.approved !== true ||
-        !["Admin", "Technician"].includes(invite.role) ||
-        (invite.claimedUid && invite.claimedUid !== user.uid)
-      ) {
-        return null;
+  if (!staff) {
+    const requestRef = doc(db, "staffRequests", user.uid);
+    await runTransaction(db, async (transaction) => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (!requestSnapshot.exists()) {
+        transaction.set(requestRef, {
+          uid: user.uid,
+          email,
+          username: user.displayName || email.split("@")[0],
+          status: "pending",
+          requestedAt: serverTimestamp(),
+        });
+      } else if (requestSnapshot.data().status === "rejected") {
+        transaction.update(requestRef, {
+          status: "pending",
+          requestedAt: serverTimestamp(),
+        });
       }
-
-      if (!invite.claimedUid) {
-        transaction.update(inviteRef, { claimedUid: user.uid });
-      }
-      const newStaff = {
-        email,
-        username: user.displayName || email.split("@")[0],
-        role: invite.role,
-        approved: true,
-        createdAt: serverTimestamp(),
-      };
-      transaction.set(staffRef, newStaff);
-      return newStaff;
     });
-    staff = approvedStaff;
   }
 
   if (
@@ -117,6 +108,8 @@ async function resolveAppUser(user) {
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [pendingEmail, setPendingEmail] = useState("");
+  const [pendingAccessMessage, setPendingAccessMessage] = useState("");
+  const [loginNotice, setLoginNotice] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState("");
 
@@ -125,9 +118,10 @@ function App() {
     const unsubscribe = onAuthStateChanged(
       auth,
       async (user) => {
-        if (!user || !isVerifiedAccount(user)) {
+        if (!user) {
           setCurrentUser(null);
           setPendingEmail("");
+          setPendingAccessMessage("");
           setAuthError("");
           setAuthReady(true);
           return;
@@ -138,12 +132,16 @@ function App() {
           if (!active) return;
           setCurrentUser(appUser);
           setPendingEmail(appUser ? "" : user.email || "");
+          setPendingAccessMessage(
+            appUser ? "" : PENDING_ACCESS_MESSAGE,
+          );
           setAuthError("");
           setAuthReady(true);
         } catch (error) {
           if (!active) return;
           setCurrentUser(null);
           setPendingEmail("");
+          setPendingAccessMessage("");
           setAuthError(`Could not check staff access: ${error.message}`);
           setAuthReady(true);
         }
@@ -160,23 +158,74 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!pendingEmail || !user || user.email !== pendingEmail) return undefined;
+
+    let active = true;
+    let requestRejected = false;
+    const unsubscribe = onSnapshot(
+      doc(db, "staff", user.uid),
+      async (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        try {
+          const appUser = await resolveAppUser(user);
+          if (!active || !appUser) return;
+          setCurrentUser(appUser);
+          setPendingEmail("");
+          setPendingAccessMessage("");
+          setAuthError("");
+        } catch (error) {
+          if (!active) return;
+          setAuthError(`Could not check Admin approval: ${error.message}`);
+        }
+      },
+      (error) => {
+        if (!active) return;
+        setAuthError(`Could not listen for Admin approval: ${error.message}`);
+      },
+    );
+    const unsubscribeRequest = onSnapshot(
+      doc(db, "staffRequests", user.uid),
+      (snapshot) => {
+        if (
+          !active ||
+          requestRejected ||
+          !snapshot.exists() ||
+          snapshot.data().status !== "rejected"
+        ) {
+          return;
+        }
+
+        requestRejected = true;
+        const rejectionMessage =
+          "Your access request was rejected by an Admin. You can sign out and submit another request later.";
+        setPendingAccessMessage(rejectionMessage);
+        setLoginNotice(rejectionMessage);
+      },
+      (error) => {
+        if (!active) return;
+        setAuthError(`Could not listen for access request status: ${error.message}`);
+      },
+    );
+    return () => {
+      active = false;
+      unsubscribe();
+      unsubscribeRequest();
+    };
+  }, [pendingEmail]);
+
   async function login(email, password) {
     const credential = await signInWithEmailAndPassword(
       auth,
       email.trim().toLowerCase(),
       password,
     );
-    if (!credential.user.emailVerified) {
-      await signOut(auth);
-      throw new Error(
-        "Verify your email before signing in. Check your inbox for Firebase's verification message.",
-      );
-    }
     const appUser = await resolveAppUser(credential.user);
     if (!appUser) {
-      throw new Error(
-        "Your account is not approved for inventory access yet. Ask an Admin to invite your email.",
-      );
+      setPendingEmail(credential.user.email || "");
+      setPendingAccessMessage(PENDING_ACCESS_MESSAGE);
     }
     return appUser;
   }
@@ -192,22 +241,45 @@ function App() {
     if (password.length < 8 || password.length > 128) {
       throw new Error("Password must be between 8 and 128 characters.");
     }
-    const credential = await createUserWithEmailAndPassword(
-      auth,
-      normalizedEmail,
-      password,
-    );
+    let credential;
+    try {
+      credential = await createUserWithEmailAndPassword(
+        auth,
+        normalizedEmail,
+        password,
+      );
+    } catch (error) {
+      if (error.code === "auth/email-already-in-use") {
+        return login(normalizedEmail, password);
+      }
+      throw error;
+    }
     try {
       await updateProfile(credential.user, {
         displayName: normalizedUsername,
       });
       await sendEmailVerification(credential.user);
+      const requestRef = doc(db, "staffRequests", credential.user.uid);
+      await runTransaction(db, async (transaction) => {
+        const requestSnapshot = await transaction.get(requestRef);
+        if (!requestSnapshot.exists()) {
+          transaction.set(requestRef, {
+            uid: credential.user.uid,
+            email: normalizedEmail,
+            username: normalizedUsername,
+            status: "pending",
+            requestedAt: serverTimestamp(),
+          });
+        }
+      });
     } catch (error) {
       throw new Error(
-        `Your account was created, but setup did not finish: ${error.message}`,
+        `Your account was created, but the access request could not be submitted: ${error.message}`,
       );
     }
-    await signOut(auth);
+    setCurrentUser(null);
+    setPendingEmail(credential.user.email || normalizedEmail);
+    setPendingAccessMessage(PENDING_ACCESS_MESSAGE);
   }
 
   async function loginWithGoogle() {
@@ -231,9 +303,8 @@ function App() {
     }
     const appUser = await resolveAppUser(credential.user);
     if (!appUser) {
-      throw new Error(
-        "Your account is not approved for inventory access yet. Ask an Admin to invite your email.",
-      );
+      setPendingEmail(credential.user.email || "");
+      setPendingAccessMessage(PENDING_ACCESS_MESSAGE);
     }
     return appUser;
   }
@@ -255,22 +326,6 @@ function App() {
     );
   }
 
-  if (pendingEmail) {
-    return (
-      <main className="auth-pending" aria-labelledby="access-pending-title">
-        <h1 id="access-pending-title">Waiting for staff approval</h1>
-        <p>
-          <strong>{pendingEmail}</strong> is signed in, but has not been
-          approved for the shared inventory. Ask an Admin to invite this email,
-          then sign out and sign in again.
-        </p>
-        <button type="button" onClick={logout}>
-          Sign out
-        </button>
-      </main>
-    );
-  }
-
   return (
     <div className="App">
       {authError && (
@@ -283,13 +338,21 @@ function App() {
           <Route
             path="/login"
             element={
-              currentUser ? (
+              pendingEmail ? (
+                <PendingAccess
+                  email={pendingEmail}
+                  message={pendingAccessMessage}
+                  error={authError}
+                  onLogout={logout}
+                />
+              ) : currentUser ? (
                 <Navigate to="/" replace />
               ) : (
                 <Login
                   onLogin={login}
                   onSignUp={signUp}
                   onGoogleLogin={loginWithGoogle}
+                  initialNotice={loginNotice}
                 />
               )
             }
@@ -297,7 +360,14 @@ function App() {
           <Route
             path="/"
             element={
-              currentUser ? (
+              pendingEmail ? (
+                <PendingAccess
+                  email={pendingEmail}
+                  message={pendingAccessMessage}
+                  error={authError}
+                  onLogout={logout}
+                />
+              ) : currentUser ? (
                 <Main currentUser={currentUser} onLogout={logout} />
               ) : (
                 <Navigate to="/login" replace />
@@ -306,11 +376,39 @@ function App() {
           />
           <Route
             path="*"
-            element={<Navigate to={currentUser ? "/" : "/login"} replace />}
+            element={
+              pendingEmail ? (
+                <PendingAccess
+                  email={pendingEmail}
+                  message={pendingAccessMessage}
+                  error={authError}
+                  onLogout={logout}
+                />
+              ) : (
+                <Navigate to={currentUser ? "/" : "/login"} replace />
+              )
+            }
           />
         </Routes>
       </Router>
     </div>
+  );
+}
+
+function PendingAccess({ email, message, error, onLogout }) {
+  return (
+    <main className="auth-pending" aria-labelledby="access-pending-title">
+      <h1 id="access-pending-title">Waiting for Admin approval</h1>
+      <p>
+        <strong>{email}</strong>{" "}
+        {message ||
+          "Your access request is waiting for Admin approval. This page will update automatically when approved."}
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <button type="button" onClick={onLogout}>
+        Sign out
+      </button>
+    </main>
   );
 }
 

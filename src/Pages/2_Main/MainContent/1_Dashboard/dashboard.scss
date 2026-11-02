@@ -158,6 +158,37 @@
   }
 }
 
+.dashboard-low-stock-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+
+  &:hover .dashboard-list-item strong {
+    color: #0076e8;
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    border-radius: 6px;
+    outline: 2px solid #0076e8;
+    outline-offset: 4px;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
 .dashboard-transaction-list li {
   align-items: flex-start;
 }

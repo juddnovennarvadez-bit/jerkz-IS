@@ -4,13 +4,18 @@ import logo from "../../assets/jerks-logo.png";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-export default function Login({ onLogin, onSignUp, onGoogleLogin }) {
+export default function Login({
+  onLogin,
+  onSignUp,
+  onGoogleLogin,
+  initialNotice = "",
+}) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(initialNotice);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -24,7 +29,7 @@ export default function Login({ onLogin, onSignUp, onGoogleLogin }) {
         await onSignUp({ email: email.trim(), username: username.trim(), password });
         setPassword("");
         setNotice(
-          "Account created. Verify your email before signing in; check your inbox for Firebase's message.",
+          "Your account and access request were submitted. Wait for an Admin to approve your request.",
         );
         setIsSignUp(false);
         return;
