@@ -85,6 +85,17 @@ function getItemMachines(item) {
   return item?.machine ? [item.machine] : [];
 }
 
+function getItemMachineStationUsage(item, machineNumber) {
+  const usage = Array.isArray(item?.machineStationUsage)
+    ? item.machineStationUsage.find(
+        (entry) =>
+          String(entry.machineNumber || "").trim().toLowerCase() ===
+          String(machineNumber || "").trim().toLowerCase(),
+      )
+    : null;
+  return Array.isArray(usage?.stations) ? usage.stations : null;
+}
+
 async function prepareImageUpload(file) {
   const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
   if (!supportedTypes.includes(file.type)) {
@@ -189,11 +200,19 @@ function ItemDetailsModal({ item, transactions, onClose }) {
     [
       "Machines",
       machines
-        .map((machine) =>
-          typeof machine === "string"
-            ? machine
-            : `${machine?.number || ""}${machine?.name ? ` — ${machine.name}` : ""}`,
-        )
+        .map((machine) => {
+          const number = typeof machine === "string" ? machine : machine?.number;
+          const name =
+            typeof machine === "string"
+              ? ""
+              : machine?.name
+                ? ` — ${machine.name}`
+                : "";
+          const usedAt = getItemMachineStationUsage(item, number);
+          return `${number || ""}${name}${
+            usedAt?.length ? ` (used at: ${usedAt.join(", ")})` : ""
+          }`;
+        })
         .filter(Boolean)
         .join(", ") || "Unassigned",
     ],
@@ -304,6 +323,15 @@ function ItemDetailsModal({ item, transactions, onClose }) {
                           {formatDetailDate(entry.timestamp)}
                           {entry.userName ? ` · ${entry.userName}` : ""}
                         </span>
+                        {entry.machineNumber && (
+                          <span>
+                            Machine: {entry.machineNumber}
+                            {entry.machineName ? ` — ${entry.machineName}` : ""}
+                          </span>
+                        )}
+                        {entry.station && (
+                          <span>Machine location: {entry.station}</span>
+                        )}
                         {entry.reason && <span>{entry.reason}</span>}
                       </div>
                       <span className="inventory-history-quantity">
@@ -349,6 +377,12 @@ function ItemModal({
         typeof machine === "string" ? machine : machine?.number,
       )
       .filter(Boolean),
+    machineStationUsage: Object.fromEntries(
+      (Array.isArray(item?.machineStationUsage)
+        ? item.machineStationUsage
+        : []
+      ).map((usage) => [usage.machineNumber, usage.stations || []]),
+    ),
     specification: item?.specification || "",
     description: item?.description || "",
     image: item?.image || "",
@@ -357,11 +391,55 @@ function ItemModal({
   const [stockIndex, setStockIndex] = useState(0);
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
+  const [machineNumber, setMachineNumber] = useState("");
+  const [station, setStation] = useState("");
   const [error, setError] = useState("");
   const [isPreparingImage, setIsPreparingImage] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const stockEntries = Array.isArray(item?.stock) ? item.stock : [];
   const selectedStock = stockEntries[stockIndex];
+  const assignedMachines = getItemMachines(item)
+    .map((assignedMachine) => {
+      const number =
+        typeof assignedMachine === "string"
+          ? assignedMachine
+          : assignedMachine?.number;
+      return (
+        machines.find(
+          (machine) =>
+            String(machine.number).trim().toLowerCase() ===
+            String(number || "").trim().toLowerCase(),
+        ) ||
+        (typeof assignedMachine === "string"
+          ? { number: assignedMachine }
+          : assignedMachine)
+      );
+    })
+    .filter((machine) => machine?.number);
+  const selectedMachine = assignedMachines.find(
+    (machine) =>
+      String(machine.number).trim().toLowerCase() ===
+      machineNumber.trim().toLowerCase(),
+  );
+  const stationOptions = Array.isArray(selectedMachine?.stations)
+    ? selectedMachine.stations
+        .map((entry) =>
+          typeof entry === "string"
+            ? entry.trim()
+            : String(entry?.name || entry?.stationName || "").trim(),
+        )
+        .filter(Boolean)
+    : [];
+  const configuredStations = getItemMachineStationUsage(item, machineNumber);
+  const allowedStations = configuredStations?.length
+    ? stationOptions.filter((stationOption) =>
+        configuredStations.some(
+          (configuredStation) =>
+            String(configuredStation).trim().toLowerCase() ===
+            stationOption.toLowerCase(),
+        ),
+      )
+    : stationOptions;
 
   function updateField(event) {
     const { name, value } = event.target;
@@ -442,6 +520,8 @@ function ItemModal({
           direction: action === "stock-in" ? "in" : "out",
           quantity,
           reason,
+          machineNumber,
+          station,
         });
         if (result) {
           setError(result);
@@ -472,7 +552,7 @@ function ItemModal({
       }}
     >
       <section
-        className="inventory-modal"
+        className={`inventory-modal${isStockAction ? "" : " inventory-item-editor-modal"}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="inventory-modal-title"
@@ -525,8 +605,55 @@ function ItemModal({
                   {Number(selectedStock.quantity) || 0} currently available
                 </p>
               )}
+              {action === "stock-out" && assignedMachines.length > 0 && (
+                <>
+                  <label>
+                    Machine
+                    <select
+                      value={machineNumber}
+                      onChange={(event) => {
+                        setMachineNumber(event.target.value);
+                        setStation("");
+                      }}
+                      required
+                    >
+                      <option value="">Select a machine</option>
+                      {assignedMachines.map((machine) => (
+                        <option value={machine.number} key={machine.number}>
+                          {machine.number}
+                          {machine.name ? ` — ${machine.name}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedMachine && allowedStations.length > 0 && (
+                    <label>
+                      Machine location
+                      <select
+                        value={station}
+                        onChange={(event) => setStation(event.target.value)}
+                        required
+                      >
+                        <option value="">Select a machine location</option>
+                        {allowedStations.map((stationName) => (
+                          <option value={stationName} key={stationName}>
+                            {stationName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {selectedMachine && allowedStations.length === 0 && (
+                    <p className="stock-location-note">
+                      {stationOptions.length === 0
+                        ? "Add at least one machine location from the Machines page before recording stock out for this machine."
+                        : "The locations selected for this item are no longer available. Update the item or machine locations before recording stock out."}
+                    </p>
+                  )}
+                </>
+              )}
               <label>
-                Quantity
+                {action === "stock-out" ? "Quantity used" : "Quantity"}
                 <input
                   type="number"
                   min="1"
@@ -599,32 +726,123 @@ function ItemModal({
                         String(number).trim().toLowerCase() ===
                         String(machine.number).trim().toLowerCase(),
                     );
+                    const machineStations = Array.isArray(machine.stations)
+                      ? machine.stations
+                          .map((entry) =>
+                            typeof entry === "string"
+                              ? entry.trim()
+                              : String(
+                                  entry?.name || entry?.stationName || "",
+                                ).trim(),
+                          )
+                          .filter(Boolean)
+                      : [];
+                    const selectedStations =
+                      fields.machineStationUsage[machine.number] || [];
                     return (
-                      <button
-                        className={`inventory-machine-option${isSelected ? " selected" : ""}`}
+                      <div
+                        className="inventory-machine-assignment"
                         key={machine.number}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => {
-                          setFields((currentFields) => ({
-                            ...currentFields,
-                            machineNumbers: isSelected
-                              ? currentFields.machineNumbers.filter(
-                                  (number) =>
-                                    String(number).trim().toLowerCase() !==
-                                    String(machine.number).trim().toLowerCase(),
-                                )
-                              : [...currentFields.machineNumbers, machine.number],
-                          }));
-                        }}
                       >
-                        <span className="inventory-machine-option-number">
-                          {machine.number}
-                        </span>
-                        <span className="inventory-machine-option-name">
-                          {machine.name || "Unnamed machine"}
-                        </span>
-                      </button>
+                        <button
+                          className={`inventory-machine-option${isSelected ? " selected" : ""}`}
+                          type="button"
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            setFields((currentFields) => ({
+                              ...currentFields,
+                              machineNumbers: isSelected
+                                ? currentFields.machineNumbers.filter(
+                                    (number) =>
+                                      String(number).trim().toLowerCase() !==
+                                      String(machine.number)
+                                        .trim()
+                                        .toLowerCase(),
+                                  )
+                                : [
+                                    ...currentFields.machineNumbers,
+                                    machine.number,
+                                  ],
+                              machineStationUsage: isSelected
+                                ? Object.fromEntries(
+                                    Object.entries(
+                                      currentFields.machineStationUsage,
+                                    ).filter(
+                                      ([number]) =>
+                                        number.trim().toLowerCase() !==
+                                        machine.number.trim().toLowerCase(),
+                                    ),
+                                  )
+                                : currentFields.machineStationUsage,
+                            }));
+                          }}
+                        >
+                          <span className="inventory-machine-option-number">
+                            {machine.number}
+                          </span>
+                          <span className="inventory-machine-option-name">
+                            {machine.name || "Unnamed machine"}
+                          </span>
+                        </button>
+                        {isSelected && machineStations.length > 0 && (
+                          <fieldset className="inventory-machine-stations">
+                            <legend>Machine locations used (optional)</legend>
+                            <p>
+                              Leave all unchecked to allow any location during
+                              Stock Out.
+                            </p>
+                            {machineStations.map((stationName) => {
+                              const isStationSelected = selectedStations.some(
+                                (selectedStation) =>
+                                  String(selectedStation)
+                                    .trim()
+                                    .toLowerCase() ===
+                                  stationName.toLowerCase(),
+                              );
+                              return (
+                                <label key={stationName}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isStationSelected}
+                                    onChange={() =>
+                                      setFields((currentFields) => {
+                                        const currentStations =
+                                          currentFields.machineStationUsage[
+                                            machine.number
+                                          ] || [];
+                                        return {
+                                          ...currentFields,
+                                          machineStationUsage: {
+                                            ...currentFields.machineStationUsage,
+                                            [machine.number]: isStationSelected
+                                              ? currentStations.filter(
+                                                  (entry) =>
+                                                    String(entry)
+                                                      .toLowerCase() !==
+                                                    stationName.toLowerCase(),
+                                                )
+                                              : [
+                                                  ...currentStations,
+                                                  stationName,
+                                                ],
+                                          },
+                                        };
+                                      })
+                                    }
+                                  />
+                                  {stationName}
+                                </label>
+                              );
+                            })}
+                          </fieldset>
+                        )}
+                        {isSelected && machineStations.length === 0 && (
+                          <p className="inventory-machine-stations-empty">
+                            Add locations to this machine to optionally specify
+                            where this item is used.
+                          </p>
+                        )}
+                      </div>
                     );
                   })
                 ) : (

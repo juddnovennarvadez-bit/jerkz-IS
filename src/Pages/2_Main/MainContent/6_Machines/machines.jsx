@@ -6,6 +6,9 @@ import "./machines.scss";
 function MachineModal({ machine, onClose, onSave }) {
   const [number, setNumber] = useState(machine?.number || "");
   const [name, setName] = useState(machine?.name || "");
+  const [stations, setStations] = useState(
+    Array.isArray(machine?.stations) ? [...machine.stations] : [],
+  );
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -13,7 +16,11 @@ function MachineModal({ machine, onClose, onSave }) {
     event.preventDefault();
     setIsSaving(true);
     try {
-      const result = await onSave(machine?.number || "", { number, name });
+      const result = await onSave(machine?.number || "", {
+        number,
+        name,
+        stations: stations.map((station) => station.trim()).filter(Boolean),
+      });
       if (result) {
         setError(result);
         return;
@@ -68,6 +75,37 @@ function MachineModal({ machine, onClose, onSave }) {
             required
             maxLength="120"
           />
+          <div className="machines-stations-editor">
+            <span className="machines-stations-label">
+              Machine locations
+            </span>
+            <p className="machines-stations-help">
+              Add locations where items may be used on this machine.
+            </p>
+            {stations.map((station, index) => (
+              <input
+                key={index}
+                aria-label={`Machine location ${index + 1}`}
+                value={station}
+                onChange={(event) =>
+                  setStations((currentStations) =>
+                    currentStations.map((entry, stationIndex) =>
+                      stationIndex === index ? event.target.value : entry,
+                    ),
+                  )
+                }
+                maxLength="120"
+              />
+            ))}
+            <button
+              type="button"
+              className="machines-add-station-button"
+              onClick={() => setStations((currentStations) => [...currentStations, ""])}
+              disabled={isSaving}
+            >
+              <FaPlus aria-hidden="true" /> Add machine location
+            </button>
+          </div>
           {error && (
             <p className="machines-action-error" role="alert">
               {error}
@@ -163,6 +201,9 @@ export default function Machines({
                 <tr>
                   <th scope="col">Machine number</th>
                   <th scope="col">Machine name</th>
+                  <th scope="col" className="machines-stations-column">
+                    Machine locations
+                  </th>
                   <th scope="col" className="machines-count-column">
                     Linked items
                   </th>
@@ -181,6 +222,9 @@ export default function Machines({
                       </span>
                     </td>
                     <td>{machine.name || "Unnamed machine"}</td>
+                    <td className="machines-stations-column">
+                      {machine.stations?.join(", ") || "No locations"}
+                    </td>
                     <td className="machines-count-column">
                       {itemCount(String(machine.number))}
                     </td>
@@ -211,7 +255,7 @@ export default function Machines({
                 ))}
                 {machines.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="machines-empty">
+                    <td colSpan="5" className="machines-empty">
                       No machines have been configured yet. Add one to get
                       started.
                     </td>

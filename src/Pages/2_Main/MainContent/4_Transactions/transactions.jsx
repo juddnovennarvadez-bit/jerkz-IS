@@ -110,6 +110,9 @@ export default function Transactions({ inventory = inventorySeed }) {
         transaction.itemName,
         transaction.userName,
         transaction.reason,
+        transaction.machineNumber,
+        transaction.machineName,
+        transaction.station,
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query)),
@@ -266,7 +269,20 @@ export default function Transactions({ inventory = inventorySeed }) {
                       </span>
                     </td>
                     <td>{transaction.userName || "—"}</td>
-                    <td>{transaction.reason || "—"}</td>
+                    <td>
+                      <span>{transaction.reason || "—"}</span>
+                      {transaction.machineNumber && (
+                        <span className="transaction-location">
+                          Machine {transaction.machineNumber}
+                          {transaction.machineName
+                            ? ` — ${transaction.machineName}`
+                            : ""}
+                          {transaction.station
+                            ? ` · Machine location ${transaction.station}`
+                            : ""}
+                        </span>
+                      )}
+                    </td>
                     <td className="transaction-quantity">
                       {transaction.quantity ?? "—"}
                     </td>

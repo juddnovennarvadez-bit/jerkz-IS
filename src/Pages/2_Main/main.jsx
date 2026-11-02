@@ -68,11 +68,31 @@ function readLegacyInventory() {
   return withoutLegacyUsers(parsedData);
 }
 
+function normalizeStationNames(stations) {
+  if (!Array.isArray(stations)) return [];
+  return stations
+    .map((station) =>
+      typeof station === "string"
+        ? station.trim()
+        : String(station?.name || station?.stationName || "").trim(),
+    )
+    .filter(
+      (station, index, entries) =>
+        station &&
+        entries.findIndex(
+          (entry) => entry.toLowerCase() === station.toLowerCase(),
+        ) === index,
+    );
+}
+
 function normalizeMachines(data) {
   const machines = new Map(
     (Array.isArray(data.machines) ? data.machines : [])
       .filter((machine) => machine?.number)
-      .map((machine) => [String(machine.number).trim().toLowerCase(), machine]),
+      .map((machine) => [
+        String(machine.number).trim().toLowerCase(),
+        { ...machine, stations: normalizeStationNames(machine.stations) },
+      ]),
   );
   for (const item of data.items) {
     const assignedMachines = Array.isArray(item.machines)
@@ -88,14 +108,29 @@ function normalizeMachines(data) {
           ? assignedMachine
           : assignedMachine?.number || "",
       ).trim();
-      if (number && !machines.has(number.toLowerCase())) {
-        machines.set(number.toLowerCase(), {
-          number,
-          name:
-            typeof assignedMachine === "string"
-              ? ""
-              : String(assignedMachine?.name || "").trim(),
-        });
+      if (number) {
+        const key = number.toLowerCase();
+        const existingMachine = machines.get(key);
+        const legacyStations =
+          typeof assignedMachine === "string" ? [] : assignedMachine?.stations;
+        if (existingMachine) {
+          machines.set(key, {
+            ...existingMachine,
+            stations: normalizeStationNames([
+              ...existingMachine.stations,
+              ...(Array.isArray(legacyStations) ? legacyStations : []),
+            ]),
+          });
+        } else {
+          machines.set(key, {
+            number,
+            name:
+              typeof assignedMachine === "string"
+                ? ""
+                : String(assignedMachine?.name || "").trim(),
+            stations: normalizeStationNames(legacyStations),
+          });
+        }
       }
     }
   }
@@ -185,6 +220,24 @@ function machinesForItem(machines, machineNumbers) {
         machine &&
         matches.findIndex((entry) => entry?.number === machine.number) === index,
     );
+}
+
+function machineStationUsageForItem(machines, machineNumbers, usageByMachine) {
+  return machinesForItem(machines, machineNumbers)
+    .map((machine) => ({
+      machineNumber: machine.number,
+      stations: normalizeStationNames(usageByMachine?.[machine.number]),
+    }))
+    .filter((usage) => usage.stations.length > 0);
+}
+
+function summarizeMachineStationUsage(usage) {
+  return (Array.isArray(usage) ? usage : [])
+    .map(
+      (entry) =>
+        `${entry.machineNumber}: ${normalizeStationNames(entry.stations).join(", ")}`,
+    )
+    .join("; ");
 }
 
 export default function Main({ currentUser, onLogout }) {
@@ -352,6 +405,11 @@ export default function Main({ currentUser, onLogout }) {
       brand: fields.brand.trim(),
       image: fields.image.trim(),
       machines: itemMachines,
+      machineStationUsage: machineStationUsageForItem(
+        inventory.machines,
+        fields.machineNumbers,
+        fields.machineStationUsage,
+      ),
       stock: [
         {
           number: "1",
@@ -420,6 +478,18 @@ export default function Main({ currentUser, onLogout }) {
           .join(", "),
       ],
       [
+        "machineStationUsage",
+        "Machine locations",
+        summarizeMachineStationUsage(originalItem.machineStationUsage),
+        summarizeMachineStationUsage(
+          machineStationUsageForItem(
+            inventory.machines,
+            fields.machineNumbers,
+            fields.machineStationUsage,
+          ),
+        ),
+      ],
+      [
         "location",
         "Location",
         originalItem.stock?.[0]?.location || "",
@@ -438,6 +508,11 @@ export default function Main({ currentUser, onLogout }) {
       brand: fields.brand.trim(),
       image: fields.image.trim(),
       machines: machinesForItem(inventory.machines, fields.machineNumbers),
+      machineStationUsage: machineStationUsageForItem(
+        inventory.machines,
+        fields.machineNumbers,
+        fields.machineStationUsage,
+      ),
       stock: stock.length
         ? stock.map((entry, index) =>
             index === 0 ? { ...entry, location: fields.location.trim() } : entry,
@@ -578,7 +653,15 @@ export default function Main({ currentUser, onLogout }) {
     });
   }
 
-  function changeStock({ itemNo, stockIndex, direction, quantity, reason }) {
+  function changeStock({
+    itemNo,
+    stockIndex,
+    direction,
+    quantity,
+    reason,
+    machineNumber,
+    station,
+  }) {
     const amount = Number(quantity);
     if (!Number.isInteger(amount) || amount <= 0) {
       return "Enter a whole number greater than zero.";
@@ -587,6 +670,41 @@ export default function Main({ currentUser, onLogout }) {
     const item = inventory.items.find((entry) => entry.itemNo === itemNo);
     if (!item) {
       return "This inventory item no longer exists.";
+    }
+
+    const assignedMachine =
+      direction === "out" && Array.isArray(item.machines)
+        ? findMachine(item.machines, machineNumber)
+        : null;
+    if (direction === "out" && item.machines?.length && !assignedMachine) {
+      return "Select a machine assigned to this item.";
+    }
+    const machine = assignedMachine
+      ? findMachine(inventory.machines, assignedMachine.number) || assignedMachine
+      : null;
+    const machineStations = normalizeStationNames(machine?.stations);
+    if (assignedMachine && machineStations.length === 0) {
+      return "Add at least one station to this machine before recording stock out.";
+    }
+    if (assignedMachine && !machineStations.includes(station)) {
+      return "Select a station for this machine.";
+    }
+    const itemStationUsage = Array.isArray(item.machineStationUsage)
+      ? item.machineStationUsage.find(
+          (usage) =>
+            String(usage.machineNumber || "").trim().toLowerCase() ===
+            String(assignedMachine?.number || "").trim().toLowerCase(),
+        )
+      : null;
+    if (
+      itemStationUsage?.stations?.length &&
+      !itemStationUsage.stations.some(
+        (allowedStation) =>
+          String(allowedStation).trim().toLowerCase() ===
+          String(station || "").trim().toLowerCase(),
+      )
+    ) {
+      return "Select a location configured for this item.";
     }
 
     const stock = item.stock[stockIndex];
@@ -611,6 +729,13 @@ export default function Main({ currentUser, onLogout }) {
       quantity: amount,
       userName: currentUser?.username || "",
       reason: reason.trim(),
+      ...(machine
+        ? {
+            machineNumber: machine.number,
+            machineName: machine.name || "",
+            ...(station ? { station } : {}),
+          }
+        : {}),
       timestamp: new Date().toISOString(),
     };
     const nextInventory = {
@@ -836,7 +961,11 @@ export default function Main({ currentUser, onLogout }) {
       return "A machine with this number already exists.";
     }
 
-    const machine = { number, name };
+    const machine = {
+      number,
+      name,
+      stations: normalizeStationNames(fields.stations),
+    };
     const transaction = {
       transactionNo: createTransactionNumber(inventory.transactions),
       transactionType: "Machine Added",
@@ -879,7 +1008,11 @@ export default function Main({ currentUser, onLogout }) {
             previousNumber.trim().toLowerCase(),
         ),
     );
-    const machine = { number, name };
+    const updatedMachine = {
+      number,
+      name,
+      stations: normalizeStationNames(fields.stations),
+    };
     const transaction = {
       transactionNo: createTransactionNumber(inventory.transactions),
       transactionType: "Machine Edited",
@@ -896,7 +1029,7 @@ export default function Main({ currentUser, onLogout }) {
       machines: inventory.machines.map((entry) =>
         String(entry.number).trim().toLowerCase() ===
         previousNumber.trim().toLowerCase()
-          ? machine
+          ? updatedMachine
           : entry,
       ),
       items: inventory.items.map((item) =>
@@ -910,7 +1043,7 @@ export default function Main({ currentUser, onLogout }) {
               machines: item.machines.map((machine) =>
                 String(machine.number || "").trim().toLowerCase() ===
                 previousNumber.trim().toLowerCase()
-                  ? { ...machine, number, name }
+                  ? { ...machine, ...updatedMachine }
                   : machine,
               ),
             }

@@ -387,6 +387,10 @@
   box-shadow: 0 20px 60px rgb(1 25 54 / 24%);
 }
 
+.inventory-item-editor-modal {
+  width: min(100%, 900px);
+}
+
 .inventory-details-modal {
   box-sizing: border-box;
   width: min(100%, 640px);
@@ -728,6 +732,7 @@
 
 .inventory-machine-option {
   display: flex;
+  width: 100%;
   min-width: 0;
   min-height: 64px;
   align-items: flex-start;
@@ -763,6 +768,64 @@
     color: #0059ad;
     box-shadow: inset 0 0 0 1px #0076e8;
   }
+}
+
+.inventory-machine-assignment {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inventory-machine-stations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #d6e2eb;
+  border-radius: 7px;
+  background: #f9fbfd;
+
+  legend {
+    padding: 0 4px;
+    color: #31485f;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #718397;
+    font-size: 11px;
+  }
+
+  label {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-direction: row;
+    gap: 7px;
+    color: #31485f;
+    font-size: 11px;
+    font-weight: 400;
+  }
+
+  input[type="checkbox"] {
+    width: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    margin: 0;
+    accent-color: #0076e8;
+  }
+}
+
+.inventory-machine-stations-empty {
+  margin: 0;
+  color: #718397;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .inventory-machine-option-number {
@@ -997,6 +1060,10 @@
   }
 
   .inventory-machine-options {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-machine-stations {
     grid-template-columns: 1fr;
   }
 
