@@ -185,6 +185,10 @@
   }
 }
 
+.machines-row-details-toggle {
+  display: none;
+}
+
 .machines-empty {
   height: 100px;
   color: #718397;
@@ -214,7 +218,7 @@
 
 .machines-modal-backdrop {
   position: fixed;
-  z-index: 20;
+  z-index: 50;
   inset: 0;
   display: grid;
   overflow: auto;
@@ -457,5 +461,125 @@
   .machines-modal-actions button,
   .machines-modal-close {
     min-height: 44px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .machines-table-wrapper {
+    overflow: hidden;
+    padding: 4px 12px 12px;
+  }
+
+  .machines-table {
+    display: block;
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: grid;
+      gap: 12px;
+    }
+
+    tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      overflow: hidden;
+      border: 1px solid #e1ebf2;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 3px 12px rgb(1 25 54 / 5%);
+    }
+
+    td {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+      padding: 12px 14px;
+      border: 0;
+      overflow-wrap: anywhere;
+      text-align: left;
+
+      &::before {
+        color: #718397;
+        content: attr(data-label);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      &:first-child {
+        grid-column: 1 / -1;
+        border-bottom: 1px solid #edf1f4;
+      }
+    }
+
+    .machines-stations-column,
+    .machines-actions-column,
+    .machines-count-column {
+      width: auto;
+      min-width: 0;
+      text-align: left;
+    }
+
+    .machines-actions-column {
+      align-items: flex-start;
+    }
+
+    .machines-empty {
+      grid-column: 1 / -1;
+      justify-content: center;
+      min-height: 80px;
+      text-align: center;
+    }
+
+    tr:not(.machine-row-expanded) {
+      .machines-stations-column,
+      .machines-actions-column {
+        display: none;
+      }
+    }
+  }
+
+  .machines-number {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .machines-row-details-toggle {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    align-self: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #0076e8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+
+    svg {
+      transition: transform 160ms ease;
+    }
+
+    svg.expanded {
+      transform: rotate(180deg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid #0076e8;
+      outline-offset: 2px;
+    }
   }
 }

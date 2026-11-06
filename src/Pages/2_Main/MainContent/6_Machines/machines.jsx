@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { FaCogs, FaEdit, FaPlus, FaTrash } from "react-icons/fa";
+import {
+  FaChevronDown,
+  FaCogs,
+  FaEdit,
+  FaPlus,
+  FaTrash,
+} from "react-icons/fa";
+import useBodyScrollLock from "../../../../useBodyScrollLock.js";
 import Header from "../../Headers/header.jsx";
 import "./machines.scss";
 
@@ -136,6 +143,8 @@ export default function Machines({
   const items = Array.isArray(inventory?.items) ? inventory.items : [];
   const [modalMachine, setModalMachine] = useState(undefined);
   const [actionError, setActionError] = useState("");
+  const [expandedMachines, setExpandedMachines] = useState(() => new Set());
+  useBodyScrollLock(modalMachine !== undefined);
 
   function itemCount(machineNumber) {
     return items.filter(
@@ -163,6 +172,15 @@ export default function Machines({
     );
     if (!confirmed) return;
     setActionError((await onDeleteMachine(machine.number)) || "");
+  }
+
+  function toggleMachineDetails(number) {
+    setExpandedMachines((current) => {
+      const next = new Set(current);
+      if (next.has(number)) next.delete(number);
+      else next.add(number);
+      return next;
+    });
   }
 
   return (
@@ -213,22 +231,51 @@ export default function Machines({
                 </tr>
               </thead>
               <tbody>
-                {machines.map((machine) => (
-                  <tr key={machine.number}>
-                    <td>
+                {machines.map((machine) => {
+                  const isExpanded = expandedMachines.has(machine.number);
+                  return (
+                  <tr
+                    key={machine.number}
+                    className={isExpanded ? "machine-row-expanded" : ""}
+                  >
+                    <td data-label="Machine number">
                       <span className="machines-number">
                         <FaCogs aria-hidden="true" />
                         {machine.number}
                       </span>
+                      <button
+                        className="machines-row-details-toggle"
+                        type="button"
+                        onClick={() => toggleMachineDetails(machine.number)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? "Hide" : "Show"} details for machine ${machine.number}`}
+                      >
+                        <span>{isExpanded ? "Hide details" : "Details"}</span>
+                        <FaChevronDown
+                          className={isExpanded ? "expanded" : ""}
+                          aria-hidden="true"
+                        />
+                      </button>
                     </td>
-                    <td>{machine.name || "Unnamed machine"}</td>
-                    <td className="machines-stations-column">
+                    <td data-label="Machine name">
+                      {machine.name || "Unnamed machine"}
+                    </td>
+                    <td
+                      className="machines-stations-column"
+                      data-label="Machine locations"
+                    >
                       {machine.stations?.join(", ") || "No locations"}
                     </td>
-                    <td className="machines-count-column">
+                    <td
+                      className="machines-count-column"
+                      data-label="Linked items"
+                    >
                       {itemCount(String(machine.number))}
                     </td>
-                    <td className="machines-actions-column">
+                    <td
+                      className="machines-actions-column"
+                      data-label="Actions"
+                    >
                       <div className="machines-row-actions">
                         <button
                           type="button"
@@ -252,7 +299,8 @@ export default function Machines({
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {machines.length === 0 && (
                   <tr>
                     <td colSpan="5" className="machines-empty">

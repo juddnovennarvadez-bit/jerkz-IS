@@ -11,7 +11,7 @@ import inventorySeed from "../../../../data/inventory.json";
 import Header from "../../Headers/header.jsx";
 import "./transactions.scss";
 
-const transactionsPerPage = 10;
+const pageSizeOptions = [10, 20, 50, 100];
 
 function getTransactionType(transaction) {
   return String(transaction.transactionType || "").trim();
@@ -43,6 +43,13 @@ function formatTimestamp(timestamp) {
     minute: "2-digit",
     hourCycle: "h23",
   }).format(date);
+}
+
+function getTransactionKey(transaction, index) {
+  return (
+    transaction.transactionNo ||
+    `${transaction.itemNo}-${transaction.timestamp}-${index}`
+  );
 }
 
 function getPageNumbers(currentPage, pageCount) {
@@ -84,6 +91,8 @@ export default function Transactions({ inventory = inventorySeed }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(pageSizeOptions[0]);
+  const [expandedTransactions, setExpandedTransactions] = useState(() => new Set());
   const query = search.trim().toLowerCase();
   const transactionTypes = [
     ...new Set(transactions.map(getTransactionType).filter(Boolean)),
@@ -123,19 +132,18 @@ export default function Transactions({ inventory = inventorySeed }) {
       return secondDate - firstDate;
     });
 
-  const pageCount = Math.ceil(
-    filteredTransactions.length / transactionsPerPage,
-  );
-  const pageNumbers = getPageNumbers(currentPage, pageCount);
-  const pageStart = (currentPage - 1) * transactionsPerPage;
+  const pageCount = Math.ceil(filteredTransactions.length / pageSize);
+  const safePage = Math.min(currentPage, Math.max(pageCount, 1));
+  const pageNumbers = getPageNumbers(safePage, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
   const pageTransactions = filteredTransactions.slice(
     pageStart,
-    pageStart + transactionsPerPage,
+    pageStart + pageSize,
   );
   const firstTransactionNumber =
     filteredTransactions.length === 0 ? 0 : pageStart + 1;
   const lastTransactionNumber = Math.min(
-    pageStart + transactionsPerPage,
+    pageStart + pageSize,
     filteredTransactions.length,
   );
   const stockInCount = transactions.filter(isStockIn).length;
@@ -144,6 +152,23 @@ export default function Transactions({ inventory = inventorySeed }) {
   function resetPage(update) {
     update();
     setCurrentPage(1);
+  }
+
+  function goToPage(page) {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0 });
+  }
+
+  function toggleTransactionDetails(transactionKey) {
+    setExpandedTransactions((current) => {
+      const next = new Set(current);
+      if (next.has(transactionKey)) {
+        next.delete(transactionKey);
+      } else {
+        next.add(transactionKey);
+      }
+      return next;
+    });
   }
 
   return (
@@ -240,16 +265,30 @@ export default function Transactions({ inventory = inventorySeed }) {
                 </tr>
               </thead>
               <tbody>
-                {pageTransactions.map((transaction, index) => (
+                {pageTransactions.map((transaction, index) => {
+                  const transactionKey = getTransactionKey(transaction, index);
+                  const isExpanded = expandedTransactions.has(transactionKey);
+                  return (
                   <tr
-                    key={
-                      transaction.transactionNo ||
-                      `${transaction.itemNo}-${transaction.timestamp}-${index}`
-                    }
+                    key={transactionKey}
+                    className={isExpanded ? "transaction-row-expanded" : ""}
                   >
-                    <td>{transaction.transactionNo || "—"}</td>
-                    <td>{formatTimestamp(transaction.timestamp)}</td>
-                    <td>
+                    <td data-label="Transaction No.">
+                      {transaction.transactionNo || "—"}
+                      <button
+                        className="transaction-row-details-toggle"
+                        type="button"
+                        onClick={() => toggleTransactionDetails(transactionKey)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? "Hide" : "Show"} details for transaction ${transaction.transactionNo || ""}`}
+                      >
+                        {isExpanded ? "Hide details" : "More details"}
+                      </button>
+                    </td>
+                    <td data-label="Date and Time">
+                      {formatTimestamp(transaction.timestamp)}
+                    </td>
+                    <td data-label="Type">
                       {getTransactionType(transaction) ? (
                         <span
                           className={`transaction-type${isStockIn(transaction) ? " stock-in" : ""}${isStockOut(transaction) ? " stock-out" : ""}`}
@@ -260,7 +299,7 @@ export default function Transactions({ inventory = inventorySeed }) {
                         "—"
                       )}
                     </td>
-                    <td>
+                    <td data-label="Item">
                       <span className="transaction-item-name">
                         {transaction.itemName || "—"}
                       </span>
@@ -268,8 +307,8 @@ export default function Transactions({ inventory = inventorySeed }) {
                         {transaction.itemNo || transaction.code || ""}
                       </span>
                     </td>
-                    <td>{transaction.userName || "—"}</td>
-                    <td>
+                    <td data-label="User">{transaction.userName || "—"}</td>
+                    <td data-label="Reason">
                       <span>{transaction.reason || "—"}</span>
                       {transaction.machineNumber && (
                         <span className="transaction-location">
@@ -283,11 +322,15 @@ export default function Transactions({ inventory = inventorySeed }) {
                         </span>
                       )}
                     </td>
-                    <td className="transaction-quantity">
+                    <td
+                      className="transaction-quantity"
+                      data-label="Qty"
+                    >
                       {transaction.quantity ?? "—"}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {filteredTransactions.length === 0 && (
                   <tr>
                     <td colSpan="7" className="transaction-empty">
@@ -304,47 +347,66 @@ export default function Transactions({ inventory = inventorySeed }) {
           <div className="transaction-footer">
             <p aria-live="polite">
               Showing {firstTransactionNumber}–{lastTransactionNumber} of{" "}
-              {filteredTransactions.length} transactions
+              {filteredTransactions.length.toLocaleString()} transactions
             </p>
-            {pageCount > 1 && (
-              <nav
-                className="transaction-pagination"
-                aria-label="Transaction pages"
-              >
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((page) => page - 1)}
-                  disabled={currentPage === 1}
-                  aria-label="Go to previous page"
+            <div className="transaction-pagination-controls">
+              <label className="transaction-page-size">
+                <span>Rows per page</span>
+                <select
+                  value={pageSize}
+                  onChange={(event) => {
+                    setPageSize(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Rows per page"
                 >
-                  <FaChevronLeft aria-hidden="true" />
-                </button>
-                {pageNumbers.map((page) =>
-                  typeof page === "number" ? (
-                    <button
-                      className={page === currentPage ? "active" : ""}
-                      type="button"
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      aria-label={`Go to page ${page}`}
-                      aria-current={page === currentPage ? "page" : undefined}
-                    >
-                      {page}
-                    </button>
-                  ) : (
-                    <span key={page}>…</span>
-                  ),
-                )}
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((page) => page + 1)}
-                  disabled={currentPage === pageCount}
-                  aria-label="Go to next page"
+                  {pageSizeOptions.map((size) => (
+                    <option value={size} key={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {pageCount > 1 && (
+                <nav
+                  className="transaction-pagination"
+                  aria-label="Transaction pages"
                 >
-                  <FaChevronRight aria-hidden="true" />
-                </button>
-              </nav>
-            )}
+                  <button
+                    type="button"
+                    onClick={() => goToPage(safePage - 1)}
+                    disabled={safePage === 1}
+                    aria-label="Go to previous page"
+                  >
+                    <FaChevronLeft aria-hidden="true" />
+                  </button>
+                  {pageNumbers.map((page) =>
+                    typeof page === "number" ? (
+                      <button
+                        className={page === safePage ? "active" : ""}
+                        type="button"
+                        key={page}
+                        onClick={() => goToPage(page)}
+                        aria-label={`Go to page ${page}`}
+                        aria-current={page === safePage ? "page" : undefined}
+                      >
+                        {page}
+                      </button>
+                    ) : (
+                      <span key={page}>…</span>
+                    ),
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => goToPage(safePage + 1)}
+                    disabled={safePage === pageCount}
+                    aria-label="Go to next page"
+                  >
+                    <FaChevronRight aria-hidden="true" />
+                  </button>
+                </nav>
+              )}
+            </div>
           </div>
         </div>
       </section>

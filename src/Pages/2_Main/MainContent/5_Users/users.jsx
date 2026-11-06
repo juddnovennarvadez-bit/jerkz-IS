@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FaUserAlt, FaUserShield } from "react-icons/fa";
+import { FaChevronDown, FaUserAlt, FaUserShield } from "react-icons/fa";
 import {
   collection,
   doc,
@@ -18,6 +18,7 @@ export default function Users({ currentUser }) {
   const [actionError, setActionError] = useState("");
   const [busyRequestId, setBusyRequestId] = useState("");
   const [busyStaffId, setBusyStaffId] = useState("");
+  const [expandedRows, setExpandedRows] = useState(() => new Set());
 
   useEffect(() => {
     const unsubscribeStaff = onSnapshot(
@@ -129,6 +130,15 @@ export default function Users({ currentUser }) {
     }
   }
 
+  function toggleRowDetails(rowId) {
+    setExpandedRows((current) => {
+      const next = new Set(current);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  }
+
   const sortedRequests = [...requests].sort((first, second) => {
     if (first.status === "pending" && second.status !== "pending") return -1;
     if (second.status === "pending" && first.status !== "pending") return 1;
@@ -187,7 +197,7 @@ export default function Users({ currentUser }) {
             </div>
           </div>
           <div className="users-table-wrapper">
-            <table className="users-table">
+            <table className="users-table users-requests-table">
               <thead>
                 <tr>
                   <th scope="col">Email</th>
@@ -197,12 +207,33 @@ export default function Users({ currentUser }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedRequests.map((request) => (
-                  <tr key={request.id}>
-                    <td>{request.email}</td>
-                    <td>{request.username || "—"}</td>
-                    <td>{request.status}</td>
-                    <td className="user-row-actions">
+                {sortedRequests.map((request) => {
+                  const rowId = `request-${request.id}`;
+                  const isExpanded = expandedRows.has(rowId);
+                  return (
+                  <tr
+                    key={request.id}
+                    className={isExpanded ? "user-row-expanded" : ""}
+                  >
+                    <td data-label="Email">
+                      {request.email}
+                      <button
+                        className="users-row-details-toggle"
+                        type="button"
+                        onClick={() => toggleRowDetails(rowId)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? "Hide" : "Show"} details for ${request.email}`}
+                      >
+                        <span>{isExpanded ? "Hide details" : "Details"}</span>
+                        <FaChevronDown
+                          className={isExpanded ? "expanded" : ""}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </td>
+                    <td data-label="Username">{request.username || "—"}</td>
+                    <td data-label="Status">{request.status}</td>
+                    <td className="user-row-actions" data-label="Manage">
                       {request.status === "pending" && (
                         <>
                           <button
@@ -226,7 +257,8 @@ export default function Users({ currentUser }) {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {requests.length === 0 && (
                   <tr>
                     <td colSpan="4" className="users-empty">
@@ -250,7 +282,7 @@ export default function Users({ currentUser }) {
             </div>
           </div>
           <div className="users-table-wrapper">
-            <table className="users-table">
+            <table className="users-table users-staff-table">
               <thead>
                 <tr>
                   <th scope="col">Email</th>
@@ -261,11 +293,32 @@ export default function Users({ currentUser }) {
                 </tr>
               </thead>
               <tbody>
-                {staff.map((user) => (
-                  <tr key={user.uid}>
-                    <td>{user.email}</td>
-                    <td>{user.username || "—"}</td>
-                    <td>
+                {staff.map((user) => {
+                  const rowId = `staff-${user.uid}`;
+                  const isExpanded = expandedRows.has(rowId);
+                  return (
+                  <tr
+                    key={user.uid}
+                    className={isExpanded ? "user-row-expanded" : ""}
+                  >
+                    <td data-label="Email">
+                      {user.email}
+                      <button
+                        className="users-row-details-toggle"
+                        type="button"
+                        onClick={() => toggleRowDetails(rowId)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? "Hide" : "Show"} details for ${user.email}`}
+                      >
+                        <span>{isExpanded ? "Hide details" : "Details"}</span>
+                        <FaChevronDown
+                          className={isExpanded ? "expanded" : ""}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </td>
+                    <td data-label="Username">{user.username || "—"}</td>
+                    <td data-label="Access level">
                       <select
                         value={user.role}
                         onChange={(event) =>
@@ -278,8 +331,10 @@ export default function Users({ currentUser }) {
                         <option value="Admin">Admin</option>
                       </select>
                     </td>
-                    <td>{user.approved ? "Approved" : "Revoked"}</td>
-                    <td className="user-row-actions">
+                    <td data-label="Status">
+                      {user.approved ? "Approved" : "Revoked"}
+                    </td>
+                    <td className="user-row-actions" data-label="Manage">
                       {user.uid !== currentUser.uid && (
                         <>
                           <button
@@ -305,7 +360,8 @@ export default function Users({ currentUser }) {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {staff.length === 0 && (
                   <tr>
                     <td colSpan="5" className="users-empty">

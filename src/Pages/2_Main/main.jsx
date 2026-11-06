@@ -15,6 +15,7 @@ import Category from "./MainContent/3_Category/category.jsx";
 import Transactions from "./MainContent/4_Transactions/transactions.jsx";
 import Users from "./MainContent/5_Users/users.jsx";
 import Machines from "./MainContent/6_Machines/machines.jsx";
+import DataTools from "./MainContent/7_DataTools/dataTools.jsx";
 
 const LEGACY_INVENTORY_STORAGE_KEY = "jerks.inventory.data";
 const INVENTORY_DOCUMENT_PATH = ["inventory", "shared"];
@@ -785,6 +786,106 @@ export default function Main({ currentUser, onLogout }) {
     });
   }
 
+  function replaceInventoryItems(importedItems) {
+    if (!Array.isArray(importedItems) || importedItems.length === 0) {
+      return "The import must contain at least one valid inventory item.";
+    }
+
+    const currentItems = new Map(
+      inventory.items
+        .map((item) => [String(item?.itemNo || "").toLowerCase(), item])
+        .filter(([itemNo]) => itemNo),
+    );
+    const nextItems = [];
+    const usedItemNumbers = new Set();
+    for (const importedItem of importedItems) {
+      if (
+        !importedItem ||
+        typeof importedItem.name !== "string" ||
+        !importedItem.name.trim() ||
+        (importedItem.itemNo !== undefined &&
+          typeof importedItem.itemNo !== "string") ||
+        !Array.isArray(importedItem.stock) ||
+        importedItem.stock.length === 0 ||
+        importedItem.stock.some(
+          (stock) =>
+            !stock ||
+            !Number.isSafeInteger(Number(stock.quantity)) ||
+            Number(stock.quantity) < 0,
+        )
+      ) {
+        return "The import contains an invalid item.";
+      }
+
+      const currentItem = importedItem.itemNo
+        ? currentItems.get(String(importedItem.itemNo).toLowerCase())
+        : null;
+      const itemNo =
+        currentItem?.itemNo ||
+        String(importedItem.itemNo || "").trim() ||
+        createItemNumber(nextItems, inventory.transactions);
+      const itemNumberKey = itemNo.toLowerCase();
+      if (usedItemNumbers.has(itemNumberKey)) {
+        return `The import contains duplicate item number ${itemNo}.`;
+      }
+      usedItemNumbers.add(itemNumberKey);
+
+      nextItems.push({
+        ...currentItem,
+        ...importedItem,
+        itemNo,
+        image: currentItem?.image || "",
+        machines: currentItem?.machines || [],
+        machineStationUsage: currentItem?.machineStationUsage || [],
+        dateCreated: currentItem?.dateCreated || new Date().toISOString(),
+      });
+    }
+
+    const categories = nextItems.reduce(
+      (existingCategories, item) =>
+        withCategory(existingCategories, item.category),
+      inventory.categories,
+    );
+    return saveInventory({ ...inventory, items: nextItems, categories });
+  }
+
+  function clearInventoryItems() {
+    return saveInventory({ ...inventory, items: [] });
+  }
+
+  function restoreInventoryBackup(data) {
+    if (
+      !data ||
+      !Array.isArray(data.items) ||
+      !Array.isArray(data.categories) ||
+      !Array.isArray(data.transactions) ||
+      data.items.some(
+        (item) =>
+          !item ||
+          typeof item.itemNo !== "string" ||
+          !item.itemNo.trim() ||
+          typeof item.name !== "string" ||
+          !item.name.trim() ||
+          !Array.isArray(item.stock),
+      ) ||
+      new Set(
+        data.items.map((item) => item.itemNo.trim().toLowerCase()),
+      ).size !== data.items.length ||
+      data.categories.some(
+        (category) =>
+          typeof category !== "string" &&
+          (!category || typeof category !== "object"),
+      ) ||
+      data.transactions.some(
+        (transaction) => !transaction || typeof transaction !== "object",
+      )
+    ) {
+      return "The backup has an invalid inventory structure.";
+    }
+
+    return saveInventory(withoutLegacyUsers(data));
+  }
+
   function addCategory(categoryName) {
     const name = categoryName.trim();
     if (!name) {
@@ -1173,6 +1274,15 @@ export default function Main({ currentUser, onLogout }) {
               onDeleteItem={deleteItem}
               onBulkAssignItems={bulkAssignItems}
               focusItemNo={lowStockItemNo}
+              actionsDisabled={isSaving || !hasCloudInventory}
+            />
+          ) : activePage === "data-management" ? (
+            <DataTools
+              inventory={inventory}
+              inventoryRevision={inventoryRevision}
+              onReplaceItems={replaceInventoryItems}
+              onClearItems={clearInventoryItems}
+              onRestoreBackup={restoreInventoryBackup}
               actionsDisabled={isSaving || !hasCloudInventory}
             />
           ) : activePage === "category" ? (

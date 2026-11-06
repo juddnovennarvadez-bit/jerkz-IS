@@ -6,6 +6,7 @@ import {
   FaBoxOpen,
   FaExchangeAlt,
   FaCogs,
+  FaDatabase,
   FaUserAlt,
   FaSignOutAlt,
 } from "react-icons/fa";
@@ -70,6 +71,12 @@ export default function Sidebar({
           onClick={() => setActivePage("inventory")}
         >
           <FaBoxOpen /> <span>Inventory</span>
+        </button>
+        <button
+          className={activePage === "data-management" ? "active" : ""}
+          onClick={() => setActivePage("data-management")}
+        >
+          <FaDatabase /> <span>Data Management</span>
         </button>
         <button
           className={activePage === "category" ? "active" : ""}

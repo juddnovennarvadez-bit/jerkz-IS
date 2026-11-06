@@ -5,6 +5,7 @@ import {
   FaPlus,
   FaTrash,
 } from "react-icons/fa";
+import useBodyScrollLock from "../../../../useBodyScrollLock.js";
 import inventorySeed from "../../../../data/inventory.json";
 import Header from "../../Headers/header.jsx";
 import "./category.scss";
@@ -112,6 +113,7 @@ export default function Category({
     : [];
   const [modalCategory, setModalCategory] = useState(undefined);
   const [actionError, setActionError] = useState("");
+  useBodyScrollLock(modalCategory !== undefined);
   const categoryNames = new Map();
 
   for (const category of configuredCategories) {
@@ -241,23 +243,22 @@ export default function Category({
               <tbody>
                 {displayedCategories.map((category) => (
                   <tr
-                    className={
-                      category.isUncategorized
-                        ? "uncategorized-category-row"
-                        : ""
-                    }
+                    className={category.isUncategorized ? "uncategorized-category-row" : ""}
                     key={category.name}
                   >
-                    <td>
+                    <td data-label="Category">
                       <span className="category-name">
                         <FaFolderOpen aria-hidden="true" />
                         {category.name}
                       </span>
                     </td>
-                    <td className="category-count-column">
+                    <td className="category-count-column" data-label="Items">
                       {category.itemCount.toLocaleString()}
                     </td>
-                    <td className="category-actions-column">
+                    <td
+                      className="category-actions-column"
+                      data-label="Actions"
+                    >
                       {!category.isUncategorized && (
                         <div className="category-row-actions">
                           <button

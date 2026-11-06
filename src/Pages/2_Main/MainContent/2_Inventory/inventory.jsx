@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import {
   Camera,
@@ -7,8 +7,8 @@ import {
   CameraSource,
 } from "@capacitor/camera";
 import {
-  FaChevronDown,
   FaChevronLeft,
+  FaChevronDown,
   FaChevronRight,
   FaCamera,
   FaEdit,
@@ -16,13 +16,20 @@ import {
   FaImage,
   FaMinus,
   FaPlus,
+  FaSave,
   FaSearch,
   FaTrash,
 } from "react-icons/fa";
+import useBodyScrollLock from "../../../../useBodyScrollLock.js";
+import {
+  exportInventoryExcel,
+  exportInventoryPdf,
+} from "../../../../data/inventoryExports.js";
 import Header from "../../Headers/header.jsx";
 import "./inventory.scss";
 
-const itemsPerPage = 10;
+const pageSizeOptions = [10, 20, 50, 100];
+const lowStockThreshold = 5;
 
 function getPageNumbers(currentPage, pageCount) {
   if (pageCount <= 7) {
@@ -60,6 +67,13 @@ function getQuantity(item) {
         0,
       )
     : 0;
+}
+
+function getStockStatus(item) {
+  const quantity = getQuantity(item);
+  if (quantity <= 0) return "out";
+  if (quantity <= lowStockThreshold) return "low";
+  return "in";
 }
 
 function getLocation(item) {
@@ -1136,23 +1150,39 @@ export default function Inventory({
   const focusedItemIndex = focusItemNo
     ? inventoryItems.findIndex((item) => item.itemNo === focusItemNo)
     : -1;
+  const itemRowRefs = useRef(new Map());
+  const [pageSize, setPageSize] = useState(pageSizeOptions[0]);
   const transactions = Array.isArray(inventory?.transactions)
     ? inventory.transactions
     : [];
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(
     focusedItemIndex >= 0
-      ? Math.floor(focusedItemIndex / itemsPerPage) + 1
+      ? Math.floor(focusedItemIndex / pageSize) + 1
       : 1,
   );
   const [modalAction, setModalAction] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
+  const [expandedItemNos, setExpandedItemNos] = useState(() => new Set());
   const [viewedItem, setViewedItem] = useState(
     focusedItemIndex >= 0 ? inventoryItems[focusedItemIndex] : null,
   );
   const [actionError, setActionError] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
   const [selectedItemNos, setSelectedItemNos] = useState([]);
   const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [stockStatusFilter, setStockStatusFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [machineFilter, setMachineFilter] = useState("");
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [exportScope, setExportScope] = useState("filtered");
+  const [exportFormat, setExportFormat] = useState("excel");
+  const [isExporting, setIsExporting] = useState(false);
+  useBodyScrollLock(
+    Boolean(modalAction || selectedItem || viewedItem || isBulkAssignOpen || isExportModalOpen),
+  );
   const categories = [
     ...new Map(
       [
@@ -1165,38 +1195,90 @@ export default function Inventory({
         .map((category) => [category.toLowerCase(), category]),
     ).values(),
   ].sort((first, second) => first.localeCompare(second));
+  const locations = [
+    ...new Set(
+      inventoryItems.flatMap((item) =>
+        (Array.isArray(item.stock) ? item.stock : [])
+          .map((stock) => String(stock.location || "").trim())
+          .filter(Boolean),
+      ),
+    ),
+  ].sort((first, second) => first.localeCompare(second));
+  const availableMachines = Array.isArray(machines) ? machines : [];
   const query = search.trim().toLowerCase();
-  const filteredItems = inventoryItems.filter((item) =>
-    [
+  const filteredItems = inventoryItems.filter((item) => {
+    const itemMachines = getItemMachines(item).map((machine) =>
+      typeof machine === "string" ? machine : machine?.number,
+    );
+    const itemLocations = Array.isArray(item.stock)
+      ? item.stock.map((stock) => String(stock.location || "").trim())
+      : [];
+    const searchableValues = [
       item.itemNo,
       item.code,
       item.name,
       item.brand,
-      item.category,
+      getCategoryName(item.category),
       getLocation(item),
-      getItemMachines(item)
-        .map((machine) =>
-          typeof machine === "string" ? machine : machine?.number,
-        )
-        .join(" "),
-    ]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query)),
+      itemMachines.join(" "),
+    ];
+    return (
+      searchableValues
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)) &&
+      (!categoryFilter ||
+        getCategoryName(item.category).toLowerCase() ===
+          categoryFilter.toLowerCase()) &&
+      (!stockStatusFilter || getStockStatus(item) === stockStatusFilter) &&
+      (!locationFilter || itemLocations.includes(locationFilter)) &&
+      (!machineFilter ||
+        itemMachines.some(
+          (number) =>
+            String(number || "").trim().toLowerCase() ===
+            machineFilter.toLowerCase(),
+        ))
+    );
+  });
+  const activeFilters = Boolean(
+    search || categoryFilter || stockStatusFilter || locationFilter || machineFilter,
   );
-  const pageCount = Math.ceil(filteredItems.length / itemsPerPage);
+  const activeFilterCount = [
+    search,
+    categoryFilter,
+    stockStatusFilter,
+    locationFilter,
+    machineFilter,
+  ].filter(Boolean).length;
+  const exportItems =
+    exportScope === "filtered" ? filteredItems : inventoryItems;
+  const pageCount = Math.ceil(filteredItems.length / pageSize);
   const safePage = Math.min(currentPage, Math.max(pageCount, 1));
   const pageNumbers = getPageNumbers(safePage, pageCount);
-  const pageStart = (safePage - 1) * itemsPerPage;
-  const pageItems = filteredItems.slice(pageStart, pageStart + itemsPerPage);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageItems = filteredItems.slice(pageStart, pageStart + pageSize);
   const allPageItemsSelected =
     pageItems.length > 0 &&
     pageItems.every((item) => selectedItemNos.includes(item.itemNo));
   const firstItemNumber = filteredItems.length === 0 ? 0 : pageStart + 1;
-  const lastItemNumber = Math.min(pageStart + itemsPerPage, filteredItems.length);
+  const lastItemNumber = Math.min(pageStart + pageSize, filteredItems.length);
   const totalUnits = inventoryItems.reduce(
     (total, item) => total + getQuantity(item),
     0,
   );
+
+  useEffect(() => {
+    if (!focusItemNo) return;
+    itemRowRefs.current
+      .get(focusItemNo)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [focusItemNo]);
+
+  function goToPage(page) {
+    setCurrentPage(page);
+    document
+      .querySelector(".main-content-container.inventory-scroll-container")
+      ?.scrollTo({ top: 0 });
+  }
 
   function openModal(action, item = null) {
     setActionError("");
@@ -1229,16 +1311,39 @@ export default function Inventory({
       setSelectedItemNos((current) =>
         current.filter((itemNo) => itemNo !== item.itemNo),
       );
+      const remainingFilteredItems =
+        filteredItems.length -
+        (filteredItems.some((filteredItem) => filteredItem.itemNo === item.itemNo)
+          ? 1
+          : 0);
+      setCurrentPage((page) =>
+        Math.min(
+          page,
+          Math.max(Math.ceil(remainingFilteredItems / pageSize), 1),
+        ),
+      );
     }
   }
 
-  function togglePageSelection(checked) {
+  function toggleFilteredSelection(checked) {
     const pageItemNos = pageItems.map((item) => item.itemNo);
     setSelectedItemNos((current) =>
       checked
         ? [...new Set([...current, ...pageItemNos])]
         : current.filter((itemNo) => !pageItemNos.includes(itemNo)),
     );
+  }
+
+  function toggleItemDetails(itemNo) {
+    setExpandedItemNos((current) => {
+      const next = new Set(current);
+      if (next.has(itemNo)) {
+        next.delete(itemNo);
+      } else {
+        next.add(itemNo);
+      }
+      return next;
+    });
   }
 
   function toggleItemSelection(itemNo, checked) {
@@ -1256,6 +1361,43 @@ export default function Inventory({
       setIsBulkAssignOpen(false);
     }
     return result;
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setCategoryFilter("");
+    setStockStatusFilter("");
+    setLocationFilter("");
+    setMachineFilter("");
+    setCurrentPage(1);
+  }
+
+  async function exportInventory(format) {
+    if (exportItems.length === 0) return;
+    setIsExporting(true);
+    setActionError("");
+    setExportStatus("");
+    try {
+      if (format === "excel") {
+        await exportInventoryExcel(exportItems);
+      } else if (format === "pdf") {
+        await exportInventoryPdf(exportItems);
+      } else {
+        throw new Error(`Unsupported export format: ${format}`);
+      }
+      const formatLabel = format === "excel" ? "Excel" : "PDF";
+      const scopeLabel =
+        exportScope === "filtered" ? "matching" : "full inventory";
+      setExportStatus(
+        `Saved ${exportItems.length} ${scopeLabel} items as ${formatLabel}.`,
+      );
+      setIsExportModalOpen(false);
+    } catch (error) {
+      setActionError(`Could not export inventory: ${error.message}`);
+      setExportStatus("");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -1308,7 +1450,126 @@ export default function Inventory({
             >
               <FaPlus aria-hidden="true" /> Add Item
             </button>
+            <button
+              className="inventory-save-button"
+              type="button"
+              onClick={() => setIsExportModalOpen(true)}
+              disabled={isExporting || inventoryItems.length === 0}
+            >
+              <FaSave aria-hidden="true" /> Save inventory
+            </button>
           </div>
+        </div>
+
+        <div className="inventory-filter-dropdown">
+          <div className="inventory-filter-dropdown-header">
+            <button
+              className="inventory-filter-toggle"
+              type="button"
+              onClick={() => setIsFilterPanelOpen((open) => !open)}
+              aria-expanded={isFilterPanelOpen}
+              aria-controls="inventory-filter-options"
+            >
+              <span>Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="inventory-filter-badge">
+                  {activeFilterCount}
+                </span>
+              )}
+              <span className="inventory-filter-toggle-count" aria-live="polite">
+                {filteredItems.length.toLocaleString()}{" "}
+                {activeFilters ? "matching items" : "items"}
+              </span>
+              <FaChevronDown
+                className={isFilterPanelOpen ? "expanded" : ""}
+                aria-hidden="true"
+              />
+            </button>
+            {activeFilters && (
+              <button
+                type="button"
+                className="inventory-clear-filters"
+                onClick={clearFilters}
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+          {isFilterPanelOpen && (
+        <div
+          className="inventory-filter-panel"
+          id="inventory-filter-options"
+          aria-label="Filter inventory"
+        >
+          <label>
+            Category
+            <select
+              value={categoryFilter}
+              onChange={(event) => {
+                setCategoryFilter(event.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All categories</option>
+              {categories.map((category) => (
+                <option value={category} key={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Stock status
+            <select
+              value={stockStatusFilter}
+              onChange={(event) => {
+                setStockStatusFilter(event.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All stock statuses</option>
+              <option value="in">In stock (&gt; 5)</option>
+              <option value="low">Low stock (1–5)</option>
+              <option value="out">Out of stock (0)</option>
+            </select>
+          </label>
+          <label>
+            Storage location
+            <select
+              value={locationFilter}
+              onChange={(event) => {
+                setLocationFilter(event.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All locations</option>
+              {locations.map((location) => (
+                <option value={location} key={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Assigned machine
+            <select
+              value={machineFilter}
+              onChange={(event) => {
+                setMachineFilter(event.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All machines</option>
+              {availableMachines.map((machine) => (
+                <option value={machine.number} key={machine.number}>
+                  {machine.number}
+                  {machine.name ? ` — ${machine.name}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+          )}
         </div>
 
         {actionError && (
@@ -1316,7 +1577,11 @@ export default function Inventory({
             {actionError}
           </p>
         )}
-
+        {exportStatus && (
+          <p className="inventory-export-status" role="status">
+            {exportStatus}
+          </p>
+        )}
         <div className="inventory-table-wrapper">
           <table className="inventory-table">
             <thead>
@@ -1326,7 +1591,7 @@ export default function Inventory({
                     type="checkbox"
                     checked={allPageItemsSelected}
                     onChange={(event) =>
-                      togglePageSelection(event.target.checked)
+                      toggleFilteredSelection(event.target.checked)
                     }
                     aria-label="Select all items on this page"
                     disabled={pageItems.length === 0}
@@ -1347,13 +1612,27 @@ export default function Inventory({
               {pageItems.map((item) => (
                 <tr
                   key={item.itemNo}
+                  ref={(element) => {
+                    if (element) {
+                      itemRowRefs.current.set(item.itemNo, element);
+                    } else {
+                      itemRowRefs.current.delete(item.itemNo);
+                    }
+                  }}
                   className={
-                    selectedItemNos.includes(item.itemNo)
-                      ? "inventory-row-selected"
-                      : ""
+                    [
+                      selectedItemNos.includes(item.itemNo)
+                        ? "inventory-row-selected"
+                        : "",
+                      expandedItemNos.has(item.itemNo)
+                        ? "inventory-row-expanded"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")
                   }
                 >
-                  <td className="inventory-select-column">
+                  <td className="inventory-select-column" data-label="Select">
                     <input
                       type="checkbox"
                       checked={selectedItemNos.includes(item.itemNo)}
@@ -1363,7 +1642,7 @@ export default function Inventory({
                       aria-label={`Select ${item.name}`}
                     />
                   </td>
-                  <td className="image-column">
+                  <td className="image-column" data-label="Image">
                     <div className="inventory-image">
                       {item.image ? (
                         <img src={item.image} alt={item.name} loading="lazy" />
@@ -1372,15 +1651,34 @@ export default function Inventory({
                       )}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Item">
                     <span className="inventory-item-name">{item.name}</span>
                     <span className="inventory-item-number">{item.itemNo}</span>
+                    <button
+                      className="inventory-row-details-toggle"
+                      type="button"
+                      onClick={() => toggleItemDetails(item.itemNo)}
+                      aria-expanded={expandedItemNos.has(item.itemNo)}
+                      aria-label={`${expandedItemNos.has(item.itemNo) ? "Hide" : "Show"} details for ${item.name}`}
+                    >
+                      <span>
+                        {expandedItemNos.has(item.itemNo)
+                          ? "Hide details"
+                          : "Details"}
+                      </span>
+                      <FaChevronDown
+                        className={
+                          expandedItemNos.has(item.itemNo) ? "expanded" : ""
+                        }
+                        aria-hidden="true"
+                      />
+                    </button>
                   </td>
-                  <td>{item.code || "—"}</td>
-                  <td>{item.brand || "—"}</td>
-                  <td>{item.category || "—"}</td>
-                  <td>{getLocation(item) || "—"}</td>
-                  <td>
+                  <td data-label="Part No.">{item.code || "—"}</td>
+                  <td data-label="Brand">{item.brand || "—"}</td>
+                  <td data-label="Category">{item.category || "—"}</td>
+                  <td data-label="Location">{getLocation(item) || "—"}</td>
+                  <td data-label="Machine">
                     {getItemMachines(item)
                       .map((machine) =>
                         typeof machine === "string" ? machine : machine?.number,
@@ -1388,8 +1686,10 @@ export default function Inventory({
                       .filter(Boolean)
                       .join(", ") || "—"}
                   </td>
-                  <td className="quantity-column">{getQuantity(item)}</td>
-                  <td>
+                  <td className="quantity-column" data-label="Qty">
+                    {getQuantity(item)}
+                  </td>
+                  <td data-label="Actions">
                     <div className="inventory-row-actions">
                       <button
                         type="button"
@@ -1454,47 +1754,68 @@ export default function Inventory({
         </div>
         <div className="inventory-footer">
           <p className="inventory-result-count" aria-live="polite">
-            Showing {firstItemNumber}–{lastItemNumber} of {filteredItems.length}{" "}
-            items
+            Showing {firstItemNumber}–{lastItemNumber} of{" "}
+            {filteredItems.length.toLocaleString()} items
           </p>
-          {pageCount > 1 && (
-            <nav className="inventory-pagination" aria-label="Inventory pages">
-              <button
-                className="pagination-arrow"
-                type="button"
-                onClick={() => setCurrentPage((page) => page - 1)}
-                disabled={safePage === 1}
-                aria-label="Go to previous page"
+          <div className="inventory-pagination-controls">
+            <label className="inventory-page-size">
+              <span>Rows per page</span>
+              <select
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  setCurrentPage(1);
+                }}
+                aria-label="Rows per page"
               >
-                <FaChevronLeft aria-hidden="true" />
-              </button>
-              {pageNumbers.map((page) =>
-                typeof page === "number" ? (
-                  <button
-                    className={`pagination-page${page === safePage ? " active" : ""}`}
-                    type="button"
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    aria-label={`Go to page ${page}`}
-                    aria-current={page === safePage ? "page" : undefined}
-                  >
-                    {page}
-                  </button>
-                ) : (
-                  <span className="pagination-ellipsis" key={page}>…</span>
-                ),
-              )}
-              <button
-                className="pagination-arrow"
-                type="button"
-                onClick={() => setCurrentPage((page) => page + 1)}
-                disabled={safePage === pageCount}
-                aria-label="Go to next page"
-              >
-                <FaChevronRight aria-hidden="true" />
-              </button>
-            </nav>
-          )}
+                {pageSizeOptions.map((size) => (
+                  <option value={size} key={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pageCount > 1 && (
+              <nav className="inventory-pagination" aria-label="Inventory pages">
+                <button
+                  className="pagination-arrow"
+                  type="button"
+                  onClick={() => goToPage(safePage - 1)}
+                  disabled={safePage === 1}
+                  aria-label="Go to previous page"
+                >
+                  <FaChevronLeft aria-hidden="true" />
+                </button>
+                {pageNumbers.map((page) =>
+                  typeof page === "number" ? (
+                    <button
+                      className={`pagination-page${page === safePage ? " active" : ""}`}
+                      type="button"
+                      key={page}
+                      onClick={() => goToPage(page)}
+                      aria-label={`Go to page ${page}`}
+                      aria-current={page === safePage ? "page" : undefined}
+                    >
+                      {page}
+                    </button>
+                  ) : (
+                    <span className="pagination-ellipsis" key={page}>
+                      …
+                    </span>
+                  ),
+                )}
+                <button
+                  className="pagination-arrow"
+                  type="button"
+                  onClick={() => goToPage(safePage + 1)}
+                  disabled={safePage === pageCount}
+                  aria-label="Go to next page"
+                >
+                  <FaChevronRight aria-hidden="true" />
+                </button>
+              </nav>
+            )}
+          </div>
         </div>
       </section>
       {modalAction && (
@@ -1508,6 +1829,147 @@ export default function Inventory({
           onSaveItem={saveItem}
           onChangeStock={onChangeStock}
         />
+      )}
+      {isExportModalOpen && (
+        <div
+          className="inventory-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isExporting) {
+              setIsExportModalOpen(false);
+            }
+          }}
+        >
+          <section
+            className="inventory-modal inventory-save-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inventory-save-modal-title"
+          >
+            <div className="inventory-modal-heading">
+              <div>
+                <h3 id="inventory-save-modal-title">Save inventory</h3>
+                <p>Choose which items to save and a file format.</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setIsExportModalOpen(false)}
+                disabled={isExporting}
+                aria-label="Close save inventory dialog"
+              >
+                ×
+              </button>
+            </div>
+            <form
+              className="inventory-modal-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                exportInventory(exportFormat);
+              }}
+            >
+              <fieldset className="inventory-save-options">
+                <legend>Items to save</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="inventory-export-scope"
+                    value="filtered"
+                    checked={exportScope === "filtered"}
+                    onChange={() => setExportScope("filtered")}
+                  />
+                  <span>
+                    <strong>Filtered results</strong>
+                    <small>
+                      {filteredItems.length} matching item
+                      {filteredItems.length === 1 ? "" : "s"}
+                    </small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="inventory-export-scope"
+                    value="all"
+                    checked={exportScope === "all"}
+                    onChange={() => setExportScope("all")}
+                  />
+                  <span>
+                    <strong>Full inventory</strong>
+                    <small>
+                      {inventoryItems.length} item
+                      {inventoryItems.length === 1 ? "" : "s"}
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+              <fieldset className="inventory-save-options">
+                <legend>File format</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="inventory-export-format"
+                    value="excel"
+                    checked={exportFormat === "excel"}
+                    onChange={() => setExportFormat("excel")}
+                  />
+                  <span>
+                    <strong>Excel workbook</strong>
+                    <small>.xlsx</small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="inventory-export-format"
+                    value="pdf"
+                    checked={exportFormat === "pdf"}
+                    onChange={() => setExportFormat("pdf")}
+                  />
+                  <span>
+                    <strong>PDF document</strong>
+                    <small>.pdf</small>
+                  </span>
+                </label>
+              </fieldset>
+              <p className="inventory-save-preview">
+                {exportItems.length} item{exportItems.length === 1 ? "" : "s"}{" "}
+                will be saved as{" "}
+                {exportFormat === "excel"
+                  ? "an Excel workbook"
+                  : "a PDF document"}
+                .
+              </p>
+              {exportItems.length === 0 && (
+                <p className="inventory-action-error" role="status">
+                  There are no matching items to save. Choose full inventory or
+                  adjust the filters.
+                </p>
+              )}
+              {actionError && (
+                <p className="inventory-action-error" role="alert">
+                  {actionError}
+                </p>
+              )}
+              <div className="inventory-modal-actions">
+                <button
+                  type="button"
+                  className="modal-cancel"
+                  onClick={() => setIsExportModalOpen(false)}
+                  disabled={isExporting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="modal-submit"
+                  disabled={isExporting || exportItems.length === 0}
+                >
+                  {isExporting ? "Saving..." : "Save file"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
       {isBulkAssignOpen && (
         <BulkAssignModal
